@@ -444,15 +444,14 @@ const notificationSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    attachments: [
-      {
-        filename: String,
-        originalName: String,
-        mimetype: String,
-        size: Number,
-        path: String,
-      },
-    ],
+attachments: [
+  {
+    originalName: String,
+    url: String,
+    size: Number,
+    type: String,
+  },
+],
     meetingInfo: {
       date: Date,
       time: String,
@@ -1510,7 +1509,7 @@ app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("at
 const attachments =
   req.files?.map((file) => ({
     originalName: file.originalname,
-    url: `https://firebasestorage.googleapis.com/v0/b/probandocositas-8c425.appspot.com/o/uploads/${file.filename}`, // o la URL pública donde sirvas el archivo
+    url: `https://firebasestorage.googleapis.com/v0/b/probandocositas-8c425.appspot.com/o/attachments/${file.filename}`, // o la URL pública donde sirvas el archivo
     size: file.size,
     type: file.mimetype,
   })) || [];
