@@ -21,6 +21,28 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 // Security middleware
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers["authorization"]
+  const token = authHeader && authHeader.split(" ")[1]
+
+  if (token == null) return res.sendStatus(401)
+
+  jwt.verify(token, process.env.JWT_SECRET || "your-secret-key", (err, user) => {
+    if (err) return res.sendStatus(403)
+    req.user = user
+    next()
+  })
+}
+
+const requireAdmin = (req, res, next) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      error: "Access denied. Admin role required.",
+    })
+  }
+  next()
+}
 
 app.put("/api/admin/sales/:id", (req, res) => {
   console.log("Llegó al backend:", req.params.id, req.body)
@@ -381,15 +403,200 @@ const planSchema = new mongoose.Schema(
   },
 )
 
-// Import new schemas
-const Notification = require("./models/Notification")
-const ChatRoom = require("./models/ChatRoom")
-const Message = require("./models/Message")
+// Notification Schema
+const notificationSchema = new mongoose.Schema(
+  {
+    title: {
+      type: String,
+      required: [true, "Title is required"],
+      trim: true,
+      maxlength: [100, "Title cannot exceed 100 characters"],
+    },
+    message: {
+      type: String,
+      required: [true, "Message is required"],
+      trim: true,
+      maxlength: [500, "Message cannot exceed 500 characters"],
+    },
+    type: {
+      type: String,
+      enum: {
+        values: ["info", "meeting", "document", "announcement", "training"],
+        message: "Type must be one of the allowed values",
+      },
+      default: "info",
+    },
+    priority: {
+      type: String,
+      enum: {
+        values: ["low", "medium", "high", "urgent"],
+        message: "Priority must be one of the allowed values",
+      },
+      default: "medium",
+    },
+    recipients: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "User",
+      default: [],
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    attachments: [
+      {
+        filename: String,
+        originalName: String,
+        mimetype: String,
+        size: Number,
+        path: String,
+      },
+    ],
+    meetingInfo: {
+      date: Date,
+      time: String,
+      duration: Number,
+      platform: {
+        type: String,
+        enum: ["zoom", "google-meet", "teams", "other"],
+      },
+      link: String,
+      description: String,
+    },
+    readBy: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        readAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  {
+    timestamps: true,
+  },
+)
+
+// ChatRoom Schema
+const chatRoomSchema = new mongoose.Schema(
+  {
+    name: {
+      type: String,
+      required: [true, "Chat room name is required"],
+      trim: true,
+    },
+    type: {
+      type: String,
+      enum: {
+        values: ["group", "private"],
+        message: "Type must be group or private",
+      },
+      required: true,
+    },
+    participants: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    lastMessage: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Message",
+    },
+    lastActivity: {
+      type: Date,
+      default: Date.now,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  {
+    timestamps: true,
+  },
+)
+
+// Message Schema
+const messageSchema = new mongoose.Schema(
+  {
+    chatRoom: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ChatRoom",
+      required: true,
+    },
+    sender: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    content: {
+      type: String,
+      required: [true, "Message content is required"],
+      trim: true,
+      maxlength: [1000, "Message cannot exceed 1000 characters"],
+    },
+    type: {
+      type: String,
+      enum: {
+        values: ["text", "file", "image"],
+        message: "Type must be text, file, or image",
+      },
+      default: "text",
+    },
+    attachments: [
+      {
+        filename: String,
+        originalName: String,
+        mimetype: String,
+        size: Number,
+        path: String,
+      },
+    ],
+    readBy: [
+      {
+        userId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+        readAt: {
+          type: Date,
+          default: Date.now,
+        },
+      },
+    ],
+    isEdited: {
+      type: Boolean,
+      default: false,
+    },
+    editedAt: Date,
+  },
+  {
+    timestamps: true,
+  },
+)
 
 // Models
 const User = mongoose.model("User", userSchema)
 const Sale = mongoose.model("Sale", saleSchema)
 const Plan = mongoose.model("Plan", planSchema)
+const Notification = mongoose.model("Notification", notificationSchema)
+const ChatRoom = mongoose.model("ChatRoom", chatRoomSchema)
+const Message = mongoose.model("Message", messageSchema)
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -419,9 +626,6 @@ const upload = multer({
     }
   },
 })
-
-// Import middleware
-const { authenticateToken, requireAdmin } = require("./middleware/auth")
 
 // Error handling helper
 const handleError = (res, error, message = "Server error") => {
@@ -1231,6 +1435,349 @@ app.get("/api/admin/users", authenticateToken, requireAdmin, async (req, res) =>
     })
   } catch (error) {
     handleError(res, error, "Failed to fetch admin users")
+  }
+})
+
+// Notification Routes
+app.get("/api/notifications", authenticateToken, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, type, priority, unreadOnly } = req.query
+    const userId = req.user.userId
+
+    const query = {
+      $or: [
+        { recipients: userId },
+        { recipients: { $size: 0 } }, // Global notifications
+      ],
+      isActive: true,
+    }
+
+    if (type) query.type = type
+    if (priority) query.priority = priority
+    if (unreadOnly === "true") {
+      query["readBy.userId"] = { $ne: userId }
+    }
+
+    const notifications = await Notification.find(query)
+      .populate("createdBy", "name role")
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
+
+    const total = await Notification.countDocuments(query)
+    const unreadCount = await Notification.countDocuments({
+      ...query,
+      "readBy.userId": { $ne: userId },
+    })
+
+    res.json({
+      success: true,
+      notifications,
+      unreadCount,
+      pagination: {
+        totalPages: Math.ceil(total / limit),
+        currentPage: Number(page),
+        total,
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
+      },
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to fetch notifications")
+  }
+})
+
+app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("attachments", 5), async (req, res) => {
+  try {
+    const { title, message, type, priority, recipients, meetingInfo } = req.body
+
+    if (!title || !message) {
+      return res.status(400).json({
+        success: false,
+        error: "Title and message are required",
+      })
+    }
+
+    let parsedRecipients = []
+    if (recipients) {
+      parsedRecipients = typeof recipients === "string" ? JSON.parse(recipients) : recipients
+    }
+
+    let parsedMeetingInfo = null
+    if (meetingInfo) {
+      parsedMeetingInfo = typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo
+    }
+
+    const attachments =
+      req.files?.map((file) => ({
+        filename: file.filename,
+        originalName: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        path: file.path,
+      })) || []
+
+    const notification = new Notification({
+      title,
+      message,
+      type: type || "info",
+      priority: priority || "medium",
+      recipients: parsedRecipients,
+      createdBy: req.user.userId,
+      attachments,
+      meetingInfo: parsedMeetingInfo,
+    })
+
+    await notification.save()
+
+    res.status(201).json({
+      success: true,
+      message: "Notification created successfully",
+      notification,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to create notification")
+  }
+})
+
+app.put("/api/notifications/:id/read", authenticateToken, async (req, res) => {
+  try {
+    const notification = await Notification.findById(req.params.id)
+    if (!notification) {
+      return res.status(404).json({
+        success: false,
+        error: "Notification not found",
+      })
+    }
+
+    const alreadyRead = notification.readBy.some((read) => read.userId.toString() === req.user.userId.toString())
+
+    if (!alreadyRead) {
+      notification.readBy.push({
+        userId: req.user.userId,
+        readAt: new Date(),
+      })
+      await notification.save()
+    }
+
+    res.json({
+      success: true,
+      message: "Notification marked as read",
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to mark notification as read")
+  }
+})
+
+// Chat Routes
+app.get("/api/chat/rooms", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId
+
+    const rooms = await ChatRoom.find({
+      participants: userId,
+      isActive: true,
+    })
+      .populate("participants", "name role")
+      .populate("lastMessage")
+      .populate("createdBy", "name role")
+      .sort({ lastActivity: -1 })
+
+    res.json({
+      success: true,
+      rooms,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to fetch chat rooms")
+  }
+})
+
+app.post("/api/chat/rooms", authenticateToken, async (req, res) => {
+  try {
+    const { name, type, participants } = req.body
+    const userId = req.user.userId
+
+    if (!name || !type) {
+      return res.status(400).json({
+        success: false,
+        error: "Name and type are required",
+      })
+    }
+
+    let roomParticipants = [userId]
+    if (participants && Array.isArray(participants)) {
+      roomParticipants = [...new Set([...roomParticipants, ...participants])]
+    }
+
+    const chatRoom = new ChatRoom({
+      name,
+      type,
+      participants: roomParticipants,
+      createdBy: userId,
+    })
+
+    await chatRoom.save()
+
+    const populatedRoom = await ChatRoom.findById(chatRoom._id)
+      .populate("participants", "name role")
+      .populate("createdBy", "name role")
+
+    res.status(201).json({
+      success: true,
+      message: "Chat room created successfully",
+      room: populatedRoom,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to create chat room")
+  }
+})
+
+app.get("/api/chat/rooms/:roomId/messages", authenticateToken, async (req, res) => {
+  try {
+    const { roomId } = req.params
+    const { page = 1, limit = 50 } = req.query
+    const userId = req.user.userId
+
+    // Verify user is participant
+    const room = await ChatRoom.findById(roomId)
+    if (!room || !room.participants.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied to this chat room",
+      })
+    }
+
+    const messages = await Message.find({ chatRoom: roomId })
+      .populate("sender", "name role")
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
+
+    const total = await Message.countDocuments({ chatRoom: roomId })
+
+    res.json({
+      success: true,
+      messages: messages.reverse(),
+      pagination: {
+        totalPages: Math.ceil(total / limit),
+        currentPage: Number(page),
+        total,
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
+      },
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to fetch messages")
+  }
+})
+
+app.post("/api/chat/rooms/:roomId/messages", authenticateToken, upload.array("attachments", 3), async (req, res) => {
+  try {
+    const { roomId } = req.params
+    const { content, type } = req.body
+    const userId = req.user.userId
+
+    if (!content && (!req.files || req.files.length === 0)) {
+      return res.status(400).json({
+        success: false,
+        error: "Message content or attachments are required",
+      })
+    }
+
+    // Verify user is participant
+    const room = await ChatRoom.findById(roomId)
+    if (!room || !room.participants.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied to this chat room",
+      })
+    }
+
+    const attachments =
+      req.files?.map((file) => ({
+        filename: file.filename,
+        originalName: file.originalname,
+        mimetype: file.mimetype,
+        size: file.size,
+        path: file.path,
+      })) || []
+
+    const message = new Message({
+      chatRoom: roomId,
+      sender: userId,
+      content: content || "",
+      type: type || "text",
+      attachments,
+    })
+
+    await message.save()
+
+    // Update room last activity and last message
+    await ChatRoom.findByIdAndUpdate(roomId, {
+      lastMessage: message._id,
+      lastActivity: new Date(),
+    })
+
+    const populatedMessage = await Message.findById(message._id).populate("sender", "name role")
+
+    res.status(201).json({
+      success: true,
+      message: "Message sent successfully",
+      data: populatedMessage,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to send message")
+  }
+})
+
+app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
+  try {
+    const currentUserId = req.user.userId
+    const targetUserId = req.params.userId
+
+    if (currentUserId === targetUserId) {
+      return res.status(400).json({
+        success: false,
+        error: "Cannot create private chat with yourself",
+      })
+    }
+
+    // Check if private room already exists
+    let room = await ChatRoom.findOne({
+      type: "private",
+      participants: { $all: [currentUserId, targetUserId], $size: 2 },
+    })
+      .populate("participants", "name role")
+      .populate("lastMessage")
+
+    if (!room) {
+      // Create new private room
+      const targetUser = await User.findById(targetUserId)
+      if (!targetUser) {
+        return res.status(404).json({
+          success: false,
+          error: "Target user not found",
+        })
+      }
+
+      room = new ChatRoom({
+        name: `Private chat`,
+        type: "private",
+        participants: [currentUserId, targetUserId],
+        createdBy: currentUserId,
+      })
+
+      await room.save()
+
+      room = await ChatRoom.findById(room._id).populate("participants", "name role").populate("lastMessage")
+    }
+
+    res.json({
+      success: true,
+      room,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to get or create private chat")
   }
 })
 
