@@ -1415,6 +1415,53 @@ app.get("/api/admin/users", authenticateToken, requireAdmin, async (req, res) =>
   }
 })
 
+app.put("/api/admin/users/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { name, phone, location, commissionRate, isActive } = req.body
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      { name, phone, location, commissionRate: Number(commissionRate), isActive },
+      { new: true, runValidators: true },
+    ).select("-password")
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      })
+    }
+
+    res.json({
+      success: true,
+      message: "User updated successfully",
+      user,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to update user")
+  }
+})
+
+app.delete("/api/admin/users/:id", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const user = await User.findByIdAndDelete(req.params.id)
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      })
+    }
+
+    res.json({
+      success: true,
+      message: "User deleted successfully",
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to delete user")
+  }
+})
+
 // Notification Routes
 app.get("/api/notifications", authenticateToken, async (req, res) => {
   try {
