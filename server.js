@@ -599,33 +599,8 @@ const ChatRoom = mongoose.model("ChatRoom", chatRoomSchema)
 const Message = mongoose.model("Message", messageSchema)
 
 // Configure multer for file uploads
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir)
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9)
-    cb(null, "dni-" + uniqueSuffix + path.extname(file.originalname))
-  },
-})
-
-const upload = multer({
-  storage: storage,
-  limits: {
-    fileSize: 5 * 1024 * 1024, // 5MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = /jpeg|jpg|png|gif/
-    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase())
-    const mimetype = allowedTypes.test(file.mimetype)
-
-    if (mimetype && extname) {
-      return cb(null, true)
-    } else {
-      cb(new Error("Solo se permiten archivos de imagen (jpeg, jpg, png, gif)"))
-    }
-  },
-})
+const storage = multer.memoryStorage()
+const upload = multer({ storage })
 
 // Error handling helper
 const handleError = (res, error, message = "Server error") => {
