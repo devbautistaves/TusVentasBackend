@@ -452,6 +452,7 @@ attachments: [
     type: { type: String, required: true },
   },
 ],
+
     meetingInfo: {
       date: Date,
       time: String,
@@ -1488,7 +1489,19 @@ app.get("/api/notifications", authenticateToken, async (req, res) => {
 app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("attachments", 5), async (req, res) => {
   try {
     const { title, message, type, priority, recipients, meetingInfo } = req.body
+  console.log('Tipo de attachments:', typeof req.body.attachments)
+  console.log('Contenido de attachments:', req.body.attachments)
 
+  // Si viene como string, parsealo
+  if (typeof req.body.attachments === 'string') {
+    try {
+      req.body.attachments = JSON.parse(req.body.attachments)
+      console.log('Attachments parseados:', req.body.attachments)
+    } catch (error) {
+      console.error('Error parseando attachments:', error)
+      return res.status(400).json({ success: false, error: 'attachments inválidos' })
+    }
+  }
     if (!title || !message) {
       return res.status(400).json({
         success: false,
