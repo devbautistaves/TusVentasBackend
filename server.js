@@ -1534,7 +1534,11 @@ const { title, message, type, priority, recipients, meetingInfo, recipientType }
 
 let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse(recipients) : recipients) : [];
 
-
+if (recipientType === "all") {
+  const allVendedores = await User.find({ isActive: true, role: "seller" }).select("_id");
+  parsedRecipients = allVendedores.map(u => u._id.toString()); // Convertir a string por seguridad
+  console.log("Vendedores encontrados:", parsedRecipients.length);
+}
 
 let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo) : null;
 
@@ -1587,15 +1591,13 @@ let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.pa
     pass: 'fxjm jrgg copy lidm' // Gmail requiere contraseña de aplicación
   }
 });
-if (recipientType === "all") {
-  // Buscar todos los vendedores activos
-  const allVendedores = await User.find({ isActive: true, role: "seller" }).select("_id");
-  parsedRecipients = allVendedores.map(u => u._id);
-}    
+
+
         // Buscar emails de usuarios destinatarios
     const usuarios = await User.find({ _id: { $in: parsedRecipients } }).select("email name");
 
-console.log("Usuarios destinatarios:", usuarios);
+console.log("Usuarios destinatarios:", usuarios.map(u => u.email));
+
 
 for (const user of usuarios) {
   try {
