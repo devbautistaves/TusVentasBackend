@@ -1752,31 +1752,50 @@ app.post("/api/chat/rooms/:roomId/messages", authenticateToken, upload.array("at
 
 app.get('/api/notifications/attachment/:notificationId/:filename', authenticateToken, async (req, res) => {
   try {
-    const { notificationId, filename } = req.params
+    const { notificationId, filename } = req.params;
+    const notification = await Notification.findById(notificationId);
+    if (!notification) return res.status(404).json({ error: "Notificación no encontrada" });
 
-    // Buscar la notificación en MongoDB
-    const notification = await Notification.findById(notificationId)
-    if (!notification) return res.status(404).json({ error: "Notificación no encontrada" })
+    // Buscar attachment que coincida con filename
+    const attachment = notification.attachments.find(a => {
+      try {
+        const urlObj = new URL(a.url);
+        const pathname = urlObj.pathname;
+        const pathParts = pathname.split('/');
+        const fileNameFromUrl = pathParts[pathParts.length - 1];
+        return fileNameFromUrl === filename;
+      } catch {
+        return false;
+      }
+    });
 
-    // Buscar el attachment que contenga el filename en su URL
-    const attachment = notification.attachments.find(a => a.url.includes(filename))
-    if (!attachment) return res.status(404).json({ error: "Attachment no encontrado" })
+    if (!attachment) return res.status(404).json({ error: "Attachment no encontrado" });
 
-    // Hacer fetch al archivo usando axios y respuesta tipo stream
-    const response = await axios.get(attachment.url, { responseType: 'stream' })
+    // Extraer filename sin parámetros
+    const urlObj = new URL(attachment.url);
+    const pathname = urlObj.pathname;
+    const pathParts = pathname.split('/');
+    const filenameOnly = pathParts[pathParts.length - 1];
 
-    // Configurar headers para que el navegador descargue el archivo con el nombre original
-    res.setHeader('Content-Disposition', `attachment; filename="${attachment.originalName}"`)
-    res.setHeader('Content-Type', attachment.type)
+    const file = bucket.file(`attachments/${filenameOnly}`);
 
-    // Pipear el stream de la respuesta de axios a la respuesta del cliente
-    response.data.pipe(res)
+    const [exists] = await file.exists();
+    if (!exists) return res.status(404).json({ error: "Archivo no existe en Storage" });
+
+    // Obtener URL firmada para descargar
+    const [signedUrl] = await file.getSignedUrl({
+      action: 'read',
+      expires: Date.now() + 60 * 60 * 1000,
+    });
+
+    res.redirect(signedUrl);
 
   } catch (error) {
-    console.error("Error descargando archivo:", error)
-    res.status(500).json({ error: "Error descargando archivo" })
+    console.error(error);
+    res.status(500).json({ error: error.message || 'Error interno' });
   }
-})
+});
+
 
 
 app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
