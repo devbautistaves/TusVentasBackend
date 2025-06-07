@@ -558,15 +558,14 @@ const messageSchema = new mongoose.Schema(
       },
       default: "text",
     },
-    attachments: [
-      {
-        filename: String,
-        originalName: String,
-        mimetype: String,
-        size: Number,
-        path: String,
-      },
-    ],
+attachments: [
+  {
+    originalName: String,
+    url: String,
+    size: Number,
+    type: String,
+  },
+],
     readBy: [
       {
         userId: {
@@ -1508,14 +1507,13 @@ app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("at
       parsedMeetingInfo = typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo
     }
 
-    const attachments =
-      req.files?.map((file) => ({
-        filename: file.filename,
-        originalName: file.originalname,
-        mimetype: file.mimetype,
-        size: file.size,
-        path: file.path,
-      })) || []
+const attachments =
+  req.files?.map((file) => ({
+    originalName: file.originalname,
+    url: `https://firebasestorage.googleapis.com/v0/b/probandocositas-8c425.appspot.com/o/uploads/${file.filename}`, // o la URL pública donde sirvas el archivo
+    size: file.size,
+    type: file.mimetype,
+  })) || [];
 
     const notification = new Notification({
       title,
