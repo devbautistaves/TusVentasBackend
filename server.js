@@ -876,6 +876,10 @@ app.post("/api/sales", authenticateToken, async (req, res) => {
     const { planId, description } = req.body
     let customerInfo = req.body.customerInfo
 
+
+    console.log('PLAN:', req.body.plan);
+console.log('DESCRIPTION:', req.body.description);
+console.log('CUSTOMER:', req.body.customer);
     if (!planId || !description || !customerInfo) {
       return res.status(400).json({
         success: false,
