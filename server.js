@@ -1516,7 +1516,7 @@ app.get("/api/notifications", authenticateToken, async (req, res) => {
 
 app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("attachments", 5), async (req, res) => {
   try {
-    const { title, message, type, priority, recipients, meetingInfo } = req.body;
+const { title, message, type, priority, recipients, meetingInfo, recipientType } = req.body;
 
     // Parsear attachments si vienen en string (por si acaso)
     if (typeof req.body.attachments === 'string') {
@@ -1531,8 +1531,14 @@ app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("at
       return res.status(400).json({ success: false, error: "Title and message are required" });
     }
 
-    let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse(recipients) : recipients) : [];
-    let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo) : null;
+
+let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse(recipients) : recipients) : [];
+
+if (recipientType === "all") {
+  // Buscar todos los vendedores activos
+  const allVendedores = await User.find({ isActive: true, role: "vendedor" }).select("_id");
+  parsedRecipients = allVendedores.map(u => u._id);
+}    let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo) : null;
 
     // Aquí viene la modificación importante: subir los archivos a Firebase
     const attachments = await Promise.all(
