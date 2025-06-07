@@ -1579,14 +1579,14 @@ app.get("/api/notifications/unread-count", authenticateToken, async (req, res) =
         { recipients: { $size: 0 } }, // Global notifications
       ],
       isActive: true,
-      "readBy.userId": { $ne: userId },
+      "readBy.userId": { $ne: userId }, // Solo no leídas
     }
 
-    const unreadCount = await Notification.countDocuments(query)
+    const count = await Notification.countDocuments(query)
 
     res.json({
       success: true,
-      unreadCount,
+      count,
     })
   } catch (error) {
     handleError(res, error, "Failed to fetch unread notifications count")
