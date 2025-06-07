@@ -1595,7 +1595,7 @@ for (const user of usuarios) {
       subject: `🔔 Nueva notificación de el equipo de TusVentas: ${title}`,
       html: `
         <div style="font-family: sans-serif; line-height: 1.5;">
-          <img src="cid:logoTusVentas" style="max-width: 200px; margin-bottom: 20px;" alt="TusVentas" />
+          <img src="cid:logoTusVentas" style="max-width: 700px; margin-bottom: 20px;" alt="TusVentas" />
           <h2>Hola ${user.name} tenes una notificacion pendiente de:📌 ${title}</h2>
           <p><strong>Tipo:</strong> ${type}</p>
           <p>${message}</p>
