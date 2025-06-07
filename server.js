@@ -1584,15 +1584,15 @@ app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("at
 });
 
         // Buscar emails de usuarios destinatarios
-    const usuarios = await User.find({ _id: { $in: parsedRecipients } }).select("email nombre");
+    const usuarios = await User.find({ _id: { $in: parsedRecipients } }).select("email name");
 
 
     for (const user of usuarios) {
       await transporter.sendMail({
         from: '"TusVentas" <tusventasok@gmail.com>',
         to: user.email,
-        subject: `🔔 Nueva notificación: ${title}`,
-        text: `Hola ${user.nombre},\n\nTenés una nueva notificación:\n\n📌 Título: ${title}\n📎 Tipo: ${type}\n\n📝 Mensaje:\n${message}\n\nIngresá a la plataforma para más información.\n\n— El equipo de TusVentas`
+        subject: `🔔 Nueva notificación de TusVentas: ${title}`,
+        text: `Hola ${user.name},\n\nTenés una nueva notificación:\n\n📌 Título: ${title}\n📎 Tipo: ${type}\n\n📝 Mensaje:\n${message}\n\nIngresá a la plataforma para más información.\n\n— El equipo de TusVentas`
       });
     }
 
