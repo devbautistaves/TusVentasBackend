@@ -1587,14 +1587,35 @@ app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("at
     const usuarios = await User.find({ _id: { $in: parsedRecipients } }).select("email name");
 
 
-    for (const user of usuarios) {
-      await transporter.sendMail({
-        from: '"TusVentas" <tusventasok@gmail.com>',
-        to: user.email,
-        subject: `🔔 Nueva notificación de TusVentas: ${title}`,
-        text: `Hola ${user.name},\n\nTenés una nueva notificación:\n\n📌 Título: ${title}\n📎 Tipo: ${type}\n\n📝 Mensaje:\n${message}\n\nIngresá a la plataforma para más información.\n\n— El equipo de TusVentas`
-      });
-    }
+for (const user of usuarios) {
+  try {
+    await transporter.sendMail({
+      from: '"TusVentas" <tucorreo@gmail.com>',
+      to: user.email,
+      subject: `🔔 Nueva notificación de el equipo de TusVentas: ${title}`,
+      html: `
+        <div style="font-family: sans-serif; line-height: 1.5;">
+          <img src="cid:logoTusVentas" style="max-width: 200px; margin-bottom: 20px;" alt="TusVentas" />
+          <h2>Hola ${user.name} tenes una notificacion pendiente de:📌 ${title}</h2>
+          <p><strong>Tipo:</strong> ${type}</p>
+          <p>${message}</p>
+          <p><a href="https://tusventas.netlify.app" style="display:inline-block; padding:10px 15px; background-color:#0b6efd; color:white; text-decoration:none; border-radius:5px;">Ver en la plataforma</a></p>
+          <hr />
+          <small>Este mensaje fue enviado automáticamente por el sistema TusVentas.</small>
+        </div>
+      `,
+      attachments: [
+        {
+          filename: 'bannertusventas.png',
+          path: './bannertusventas.png', // o desde Firebase si lo descargás
+          cid: 'logoTusVentas' // este ID es el que usás en src="cid:logoTusVentas"
+        }
+      ]
+    });
+  } catch (err) {
+    console.error(`Error enviando correo a ${user.email}:`, err.message);
+  }
+}
 
     res.status(201).json({
       success: true,
