@@ -963,8 +963,9 @@ console.log('CUSTOMER:', req.body.customer);
 
     await sale.save()
     console.log("Sale created successfully:", sale._id)
-    await enviarMensajeTelegram(`🛒 Nueva venta:\n💰 Monto: $${planPrice}\n📦 Producto: ${planName}\n👤 Vendedor: ${sellerName}`);
-
+await enviarMensajeTelegram(
+  `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${user.name}`
+)
 
     await User.findByIdAndUpdate(user._id, {
       $inc: {
