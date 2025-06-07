@@ -1536,7 +1536,7 @@ let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse
 
 if (recipientType === "all") {
   // Buscar todos los vendedores activos
-  const allVendedores = await User.find({ isActive: true, role: "vendedor" }).select("_id");
+  const allVendedores = await User.find({ isActive: true, role: "seller" }).select("_id");
   parsedRecipients = allVendedores.map(u => u._id);
 }    let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo) : null;
 
