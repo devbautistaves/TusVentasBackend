@@ -344,11 +344,7 @@ const saleSchema = new mongoose.Schema(
         required: [true, "Customer DNI is required"],
         trim: true,
       },
-      dniPhoto: {
-        type: String,
-        required: [true, "DNI photo is required"],
-        trim: true,
-      },
+
       address: {
         street: {
           type: String,
@@ -873,7 +869,7 @@ app.put("/api/users/profile", authenticateToken, async (req, res) => {
 })
 
 // Sales Routes
-app.post("/api/sales", authenticateToken, upload.single("dniPhoto"), async (req, res) => {
+app.post("/api/sales", authenticateToken, async (req, res) => {
   try {
     console.log("Creating sale - User:", req.user.userId)
 
@@ -936,7 +932,6 @@ app.post("/api/sales", authenticateToken, upload.single("dniPhoto"), async (req,
     }
 
     const commission = plan.price * user.commissionRate
-    customerInfo.dniPhoto = req.file.filename
 
     const statusHistory = [
       {
