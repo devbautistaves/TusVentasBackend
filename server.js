@@ -874,6 +874,8 @@ app.post("/api/sales", authenticateToken, async (req, res) => {
     console.log("Creating sale - User:", req.user.userId)
 
     const { planId, description } = req.body
+    console.log('REQ BODY:', req.body)
+
     let customerInfo = req.body.customerInfo
 
 
