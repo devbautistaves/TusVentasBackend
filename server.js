@@ -10,6 +10,7 @@ require("dotenv").config()
 const multer = require("multer")
 const path = require("path")
 const fs = require("fs")
+const bucket = require('./firebaseAdmin');
 
 const app = express()
 const PORT = process.env.PORT || 5000
@@ -1488,44 +1489,51 @@ app.get("/api/notifications", authenticateToken, async (req, res) => {
 
 app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("attachments", 5), async (req, res) => {
   try {
-    const { title, message, type, priority, recipients, meetingInfo } = req.body
-  console.log('Tipo de attachments:', typeof req.body.attachments)
-  console.log('Contenido de attachments:', req.body.attachments)
+    const { title, message, type, priority, recipients, meetingInfo } = req.body;
 
-  // Si viene como string, parsealo
-  if (typeof req.body.attachments === 'string') {
-    try {
-      req.body.attachments = JSON.parse(req.body.attachments)
-      console.log('Attachments parseados:', req.body.attachments)
-    } catch (error) {
-      console.error('Error parseando attachments:', error)
-      return res.status(400).json({ success: false, error: 'attachments inválidos' })
+    // Parsear attachments si vienen en string (por si acaso)
+    if (typeof req.body.attachments === 'string') {
+      try {
+        req.body.attachments = JSON.parse(req.body.attachments);
+      } catch (error) {
+        return res.status(400).json({ success: false, error: 'attachments inválidos' });
+      }
     }
-  }
+
     if (!title || !message) {
-      return res.status(400).json({
-        success: false,
-        error: "Title and message are required",
+      return res.status(400).json({ success: false, error: "Title and message are required" });
+    }
+
+    let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse(recipients) : recipients) : [];
+    let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo) : null;
+
+    // Aquí viene la modificación importante: subir los archivos a Firebase
+    const attachments = await Promise.all(
+      (req.files || []).map(async (file) => {
+        const fileName = `attachments/${Date.now()}_${file.originalname}`;
+        const fileUpload = bucket.file(fileName);
+
+        // Subir archivo buffer a Firebase Storage
+        await fileUpload.save(file.buffer, {
+          metadata: {
+            contentType: file.mimetype,
+          },
+        });
+
+        // Obtener URL firmada (válida por 1 hora)
+        const [url] = await fileUpload.getSignedUrl({
+          action: 'read',
+          expires: Date.now() + 60 * 60 * 1000,
+        });
+
+        return {
+          originalName: file.originalname,
+          url,
+          size: file.size,
+          type: file.mimetype,
+        };
       })
-    }
-
-    let parsedRecipients = []
-    if (recipients) {
-      parsedRecipients = typeof recipients === "string" ? JSON.parse(recipients) : recipients
-    }
-
-    let parsedMeetingInfo = null
-    if (meetingInfo) {
-      parsedMeetingInfo = typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo
-    }
-
-const attachments =
-  req.files?.map((file) => ({
-    originalName: file.originalname,
-    url: `https://firebasestorage.googleapis.com/v0/b/probandocositas-8c425.appspot.com/o/attachments/${file.filename}`, // o la URL pública donde sirvas el archivo
-    size: file.size,
-    type: file.mimetype,
-  })) || [];
+    );
 
     const notification = new Notification({
       title,
@@ -1536,19 +1544,20 @@ const attachments =
       createdBy: req.user.userId,
       attachments,
       meetingInfo: parsedMeetingInfo,
-    })
+    });
 
-    await notification.save()
+    await notification.save();
 
     res.status(201).json({
       success: true,
       message: "Notification created successfully",
       notification,
-    })
+    });
   } catch (error) {
-    handleError(res, error, "Failed to create notification")
+    console.error(error);
+    res.status(500).json({ success: false, error: error.message || "Failed to create notification" });
   }
-})
+});
 
 app.put("/api/notifications/:id/read", authenticateToken, async (req, res) => {
   try {
