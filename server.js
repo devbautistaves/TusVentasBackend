@@ -15,9 +15,24 @@ const path = require("path")
 const fs = require("fs")
 const bucket = require('./firebaseAdmin');
 
+
+
 const app = express()
 const PORT = process.env.PORT || 5000
 
+
+const TELEGRAM_TOKEN = '7649651512:AAFe_N3slNd9Q1gjy-HJ01ldZ8I8qoYUqEQ';
+const CHAT_ID = '-1002813962725'; // tu chat_id
+
+async function enviarMensajeTelegram(texto) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+
+  await axios.post(url, {
+    chat_id: CHAT_ID,
+    text: texto,
+    parse_mode: 'HTML'
+  });
+}
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, "uploads")
 if (!fs.existsSync(uploadsDir)) {
@@ -724,10 +739,12 @@ app.post("/api/auth/register", async (req, res) => {
       password: hashedPassword,
       phone,
       location,
-      commissionRate: 0.05,
+      commissionRate: 0.3,
     })
 
     await user.save()
+
+    await enviarMensajeTelegram(`📥 <b>Nuevo registro</b>\n👤 Nombre: ${name}\n📧 Email: ${email}\n📞 Teléfono: ${phone}`);
 
     const token = jwt.sign(
       { userId: user._id, email: user.email, role: user.role },
@@ -952,6 +969,8 @@ app.post("/api/sales", authenticateToken, upload.single("dniPhoto"), async (req,
 
     await sale.save()
     console.log("Sale created successfully:", sale._id)
+    await enviarMensajeTelegram(`🛒 Nueva venta:\n💰 Monto: $${planPrice}\n📦 Producto: ${planName}\n👤 Vendedor: ${sellerName}`);
+
 
     await User.findByIdAndUpdate(user._id, {
       $inc: {
