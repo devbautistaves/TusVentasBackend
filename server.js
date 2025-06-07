@@ -6,6 +6,8 @@ const jwt = require("jsonwebtoken")
 const helmet = require("helmet")
 const rateLimit = require("express-rate-limit")
 require("dotenv").config()
+const axios = require('axios')
+
 
 const multer = require("multer")
 const path = require("path")
@@ -1747,6 +1749,35 @@ app.post("/api/chat/rooms/:roomId/messages", authenticateToken, upload.array("at
     handleError(res, error, "Failed to send message")
   }
 })
+
+app.get('/api/notifications/attachment/:notificationId/:filename', authenticateToken, async (req, res) => {
+  try {
+    const { notificationId, filename } = req.params
+
+    // Buscar la notificación en MongoDB
+    const notification = await Notification.findById(notificationId)
+    if (!notification) return res.status(404).json({ error: "Notificación no encontrada" })
+
+    // Buscar el attachment que contenga el filename en su URL
+    const attachment = notification.attachments.find(a => a.url.includes(filename))
+    if (!attachment) return res.status(404).json({ error: "Attachment no encontrado" })
+
+    // Hacer fetch al archivo usando axios y respuesta tipo stream
+    const response = await axios.get(attachment.url, { responseType: 'stream' })
+
+    // Configurar headers para que el navegador descargue el archivo con el nombre original
+    res.setHeader('Content-Disposition', `attachment; filename="${attachment.originalName}"`)
+    res.setHeader('Content-Type', attachment.type)
+
+    // Pipear el stream de la respuesta de axios a la respuesta del cliente
+    response.data.pipe(res)
+
+  } catch (error) {
+    console.error("Error descargando archivo:", error)
+    res.status(500).json({ error: "Error descargando archivo" })
+  }
+})
+
 
 app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
   try {
