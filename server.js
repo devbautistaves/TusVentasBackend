@@ -446,10 +446,10 @@ const notificationSchema = new mongoose.Schema(
     },
 attachments: [
   {
-    originalName: String,
-    url: String,
-    size: Number,
-    type: String,
+    originalName: { type: String, required: true },
+    url: { type: String, required: true },
+    size: { type: Number, required: true },
+    type: { type: String, required: true },
   },
 ],
     meetingInfo: {
