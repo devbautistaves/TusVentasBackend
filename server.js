@@ -1537,7 +1537,9 @@ let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse
 
 
 if (recipientType === "all") {
-  const allVendedores = await User.find({ isActive: true, role: "seller" }).select("_id");
+  const allVendedores = await User.find({     isActive: true,
+    role: { $in: ["seller", "admin"] },
+  }).select("_id");
   parsedRecipients = allVendedores.map(u => u._id.toString());
 }
 
