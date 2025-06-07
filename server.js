@@ -1548,19 +1548,20 @@ app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("at
         });
 
         // Obtener URL firmada (válida por 1 hora)
-        const [url] = await fileUpload.getSignedUrl({
-          action: 'read',
-          expires: Date.now() + 60 * 60 * 1000,
-        });
+    // Hacer el archivo público (acceso libre)
+    await fileUpload.makePublic();
 
-        return {
-          originalName: file.originalname,
-          url,
-          size: file.size,
-          type: file.mimetype,
-        };
-      })
-    );
+    // Construir URL pública fija
+    const publicUrl = `https://storage.googleapis.com/probandocositas-8c425.appspot.com/${fileName}`;
+
+    return {
+      originalName: file.originalname,
+      url: publicUrl,  // URL fija y pública
+      size: file.size,
+      type: file.mimetype,
+    };
+  })
+);
 
     const notification = new Notification({
       title,
@@ -1863,24 +1864,8 @@ app.get('/api/notifications/attachment/:notificationId/:filename', authenticateT
 
     if (!attachment) return res.status(404).json({ error: "Attachment no encontrado" });
 
-    // Extraer filename sin parámetros
-    const urlObj = new URL(attachment.url);
-    const pathname = urlObj.pathname;
-    const pathParts = pathname.split('/');
-    const filenameOnly = pathParts[pathParts.length - 1];
-
-    const file = bucket.file(`attachments/${filenameOnly}`);
-
-    const [exists] = await file.exists();
-    if (!exists) return res.status(404).json({ error: "Archivo no existe en Storage" });
-
-    // Obtener URL firmada para descargar
-    const [signedUrl] = await file.getSignedUrl({
-      action: 'read',
-      expires: Date.now() + 60 * 60 * 1000,
-    });
-
-    res.redirect(signedUrl);
+    // Redirigir directo a la URL pública fija
+    res.redirect(attachment.url);
 
   } catch (error) {
     console.error(error);
