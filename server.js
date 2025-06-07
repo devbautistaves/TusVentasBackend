@@ -64,8 +64,6 @@ app.put("/sales/:id", async (req, res) => {
   }
 })
 
-module.exports = app
-
 // CORS configuration
 app.use(cors()) // 👈 ¡Solo para pruebas! No uses esto en producción
 
@@ -383,6 +381,11 @@ const planSchema = new mongoose.Schema(
   },
 )
 
+// Import new schemas
+const Notification = require("./models/Notification")
+const ChatRoom = require("./models/ChatRoom")
+const Message = require("./models/Message")
+
 // Models
 const User = mongoose.model("User", userSchema)
 const Sale = mongoose.model("Sale", saleSchema)
@@ -417,84 +420,8 @@ const upload = multer({
   },
 })
 
-// JWT Middleware
-const authenticateToken = async (req, res, next) => {
-  try {
-    const authHeader = req.headers["authorization"]
-    const token = authHeader && authHeader.split(" ")[1]
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        error: "Access token required",
-        code: "NO_TOKEN",
-      })
-    }
-
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || "your-secret-key")
-
-    const user = await User.findById(decoded.userId).select("-password")
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: "User not found",
-        code: "USER_NOT_FOUND",
-      })
-    }
-
-    if (!user.isActive) {
-      return res.status(401).json({
-        success: false,
-        error: "Account is deactivated",
-        code: "ACCOUNT_DEACTIVATED",
-      })
-    }
-
-    req.user = {
-      userId: user._id,
-      email: user.email,
-      role: user.role,
-      commissionRate: user.commissionRate,
-    }
-
-    next()
-  } catch (error) {
-    if (error.name === "JsonWebTokenError") {
-      return res.status(403).json({
-        success: false,
-        error: "Invalid token",
-        code: "INVALID_TOKEN",
-      })
-    }
-
-    if (error.name === "TokenExpiredError") {
-      return res.status(403).json({
-        success: false,
-        error: "Token expired",
-        code: "TOKEN_EXPIRED",
-      })
-    }
-
-    console.error("Auth middleware error:", error)
-    res.status(500).json({
-      success: false,
-      error: "Authentication error",
-      code: "AUTH_ERROR",
-    })
-  }
-}
-
-// Admin middleware
-const requireAdmin = (req, res, next) => {
-  if (req.user.role !== "admin") {
-    return res.status(403).json({
-      success: false,
-      error: "Admin access required",
-      code: "ADMIN_REQUIRED",
-    })
-  }
-  next()
-}
+// Import middleware
+const { authenticateToken, requireAdmin } = require("./middleware/auth")
 
 // Error handling helper
 const handleError = (res, error, message = "Server error") => {
@@ -542,6 +469,9 @@ app.get("/api/health", async (req, res) => {
     const userCount = await User.countDocuments()
     const saleCount = await Sale.countDocuments()
     const planCount = await Plan.countDocuments()
+    const notificationCount = await Notification.countDocuments()
+    const chatRoomCount = await ChatRoom.countDocuments()
+    const messageCount = await Message.countDocuments()
 
     res.json({
       success: true,
@@ -556,6 +486,9 @@ app.get("/api/health", async (req, res) => {
           users: userCount,
           sales: saleCount,
           plans: planCount,
+          notifications: notificationCount,
+          chatRooms: chatRoomCount,
+          messages: messageCount,
         },
       },
     })
@@ -1271,124 +1204,37 @@ app.get("/api/admin/users", authenticateToken, requireAdmin, async (req, res) =>
 
     const { page = 1, limit = 20, isActive } = req.query
 
-    const query = { role: "seller" }
-    if (isActive !== undefined) query.isActive = isActive === "true"
+    const usersQuery = {}
+    if (isActive !== undefined) {
+      usersQuery.isActive = isActive === "true"
+    }
 
-    const users = await User.find(query)
-      .select("-password")
+    const users = await User.find(usersQuery)
       .sort({ createdAt: -1 })
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit))
 
-    const total = await User.countDocuments(query)
+    const totalUsers = await User.countDocuments(usersQuery)
 
-    console.log(`Found ${users.length} admin users out of ${total} total`)
+    console.log(`Found ${users.length} users out of ${totalUsers} total`)
 
     res.json({
       success: true,
       users,
       pagination: {
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(totalUsers / limit),
         currentPage: Number(page),
-        total,
-        hasNext: page * limit < total,
+        total: totalUsers,
+        hasNext: page * limit < totalUsers,
         hasPrev: page > 1,
       },
     })
   } catch (error) {
-    console.error("Error fetching admin users:", error)
     handleError(res, error, "Failed to fetch admin users")
   }
 })
 
-app.put("/api/admin/users/:id", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const { name, phone, location, commissionRate, isActive } = req.body
-
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      { name, phone, location, commissionRate: Number(commissionRate), isActive },
-      { new: true, runValidators: true },
-    ).select("-password")
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      })
-    }
-
-    res.json({
-      success: true,
-      message: "User updated successfully",
-      user,
-    })
-  } catch (error) {
-    handleError(res, error, "Failed to update user")
-  }
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`)
 })
-
-app.delete("/api/admin/users/:id", authenticateToken, requireAdmin, async (req, res) => {
-  try {
-    const user = await User.findByIdAndDelete(req.params.id)
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      })
-    }
-
-    res.json({
-      success: true,
-      message: "User deleted successfully",
-    })
-  } catch (error) {
-    handleError(res, error, "Failed to delete user")
-  }
-})
-
-// 404 handler
-app.use("*", (req, res) => {
-  res.status(404).json({
-    success: false,
-    error: "Route not found",
-    path: req.originalUrl,
-  })
-})
-
-// Global error handling middleware
-app.use((err, req, res, next) => {
-  console.error("Global error handler:", err.stack)
-  res.status(500).json({
-    success: false,
-    error: "Something went wrong!",
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
-  })
-})
-
-// Graceful shutdown
-process.on("SIGTERM", () => {
-  console.log("SIGTERM received. Shutting down gracefully...")
-  mongoose.connection.close(() => {
-    console.log("MongoDB connection closed.")
-    process.exit(0)
-  })
-})
-
-process.on("SIGINT", () => {
-  console.log("SIGINT received. Shutting down gracefully...")
-  mongoose.connection.close(() => {
-    console.log("MongoDB connection closed.")
-    process.exit(0)
-  })
-})
-
-// Start server
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Server running on port ${PORT}`)
-  console.log(`📊 Environment: ${process.env.NODE_ENV || "development"}`)
-  console.log(`🔗 Health check: http://localhost:${PORT}/api/health`)
-})
-
-module.exports = app
