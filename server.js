@@ -887,13 +887,6 @@ app.post("/api/sales", authenticateToken, upload.single("dniPhoto"), async (req,
       })
     }
 
-    if (!req.file) {
-      return res.status(400).json({
-        success: false,
-        error: "DNI photo is required",
-      })
-    }
-
     if (typeof customerInfo === "string") {
       customerInfo = JSON.parse(customerInfo)
     }
