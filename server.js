@@ -1516,8 +1516,8 @@ app.get("/api/notifications", authenticateToken, async (req, res) => {
 
 app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("attachments", 5), async (req, res) => {
   try {
-const { title, message, type, priority, recipients, meetingInfo, recipientType } = req.body;
-
+const { title, message, type, priority, recipients, meetingInfo } = req.body;
+const { recipientType } = req.body;
     // Parsear attachments si vienen en string (por si acaso)
     if (typeof req.body.attachments === 'string') {
       try {
@@ -1534,10 +1534,11 @@ const { title, message, type, priority, recipients, meetingInfo, recipientType }
 
 let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse(recipients) : recipients) : [];
 
+
+
 if (recipientType === "all") {
   const allVendedores = await User.find({ isActive: true, role: "seller" }).select("_id");
-  parsedRecipients = allVendedores.map(u => u._id.toString()); // Convertir a string por seguridad
-  console.log("Vendedores encontrados:", parsedRecipients.length);
+  parsedRecipients = allVendedores.map(u => u._id.toString());
 }
 
 let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo) : null;
