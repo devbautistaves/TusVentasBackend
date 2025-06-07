@@ -1781,6 +1781,238 @@ app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
   }
 })
 
+// Specific Chat Routes for Frontend Compatibility
+app.get("/api/chat/group", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId
+
+    // Find or create group chat room
+    let groupRoom = await ChatRoom.findOne({
+      type: "group",
+      name: "Equipo de Ventas",
+    }).populate("participants", "name role")
+
+    if (!groupRoom) {
+      // Create group chat room with all users
+      const allUsers = await User.find({ isActive: true }).select("_id")
+      const participantIds = allUsers.map((user) => user._id)
+
+      groupRoom = new ChatRoom({
+        name: "Equipo de Ventas",
+        type: "group",
+        participants: participantIds,
+        createdBy: userId,
+      })
+
+      await groupRoom.save()
+
+      groupRoom = await ChatRoom.findById(groupRoom._id).populate("participants", "name role")
+    } else {
+      // Add user to group if not already a participant
+      if (!groupRoom.participants.some((p) => p._id.toString() === userId.toString())) {
+        groupRoom.participants.push(userId)
+        await groupRoom.save()
+        groupRoom = await ChatRoom.findById(groupRoom._id).populate("participants", "name role")
+      }
+    }
+
+    res.json({
+      success: true,
+      chatRoom: groupRoom,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to get group chat")
+  }
+})
+
+app.get("/api/chat/private-admin", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId
+
+    if (req.user.role === "admin") {
+      return res.status(400).json({
+        success: false,
+        error: "Admins should use private-chats endpoint",
+      })
+    }
+
+    // Find admin user
+    const admin = await User.findOne({ role: "admin" })
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        error: "No admin found",
+      })
+    }
+
+    // Find or create private chat with admin
+    let privateRoom = await ChatRoom.findOne({
+      type: "private",
+      participants: { $all: [userId, admin._id], $size: 2 },
+    }).populate("participants", "name role")
+
+    if (!privateRoom) {
+      privateRoom = new ChatRoom({
+        name: "Chat con Admin",
+        type: "private",
+        participants: [userId, admin._id],
+        createdBy: userId,
+      })
+
+      await privateRoom.save()
+      privateRoom = await ChatRoom.findById(privateRoom._id).populate("participants", "name role")
+    }
+
+    res.json({
+      success: true,
+      chatRoom: privateRoom,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to get private chat with admin")
+  }
+})
+
+app.get("/api/chat/private-chats", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const adminId = req.user.userId
+
+    // Get all private chats where admin is a participant
+    const privateChats = await ChatRoom.find({
+      type: "private",
+      participants: adminId,
+    })
+      .populate("participants", "name role email")
+      .populate("lastMessage")
+      .sort({ lastActivity: -1 })
+
+    res.json({
+      success: true,
+      chatRooms: privateChats,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to get private chats")
+  }
+})
+
+// Update existing message routes to match frontend expectations
+app.get("/api/chat/:chatRoomId/messages", authenticateToken, async (req, res) => {
+  try {
+    const { chatRoomId } = req.params
+    const { page = 1, limit = 50 } = req.query
+    const userId = req.user.userId
+
+    // Verify user is participant
+    const room = await ChatRoom.findById(chatRoomId)
+    if (!room || !room.participants.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied to this chat room",
+      })
+    }
+
+    const messages = await Message.find({ chatRoom: chatRoomId })
+      .populate("sender", "name role")
+      .sort({ createdAt: 1 }) // Ascending order for chat
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
+
+    const total = await Message.countDocuments({ chatRoom: chatRoomId })
+
+    res.json({
+      success: true,
+      messages,
+      pagination: {
+        totalPages: Math.ceil(total / limit),
+        currentPage: Number(page),
+        total,
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
+      },
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to fetch messages")
+  }
+})
+
+app.post("/api/chat/:chatRoomId/messages", authenticateToken, async (req, res) => {
+  try {
+    const { chatRoomId } = req.params
+    const { content } = req.body
+    const userId = req.user.userId
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Message content is required",
+      })
+    }
+
+    // Verify user is participant
+    const room = await ChatRoom.findById(chatRoomId)
+    if (!room || !room.participants.includes(userId)) {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied to this chat room",
+      })
+    }
+
+    const message = new Message({
+      chatRoom: chatRoomId,
+      sender: userId,
+      content: content.trim(),
+      type: "text",
+    })
+
+    await message.save()
+
+    // Update room last activity and last message
+    await ChatRoom.findByIdAndUpdate(chatRoomId, {
+      lastMessage: message._id,
+      lastActivity: new Date(),
+    })
+
+    const populatedMessage = await Message.findById(message._id).populate("sender", "name role")
+
+    res.status(201).json({
+      success: true,
+      message: "Message sent successfully",
+      data: populatedMessage,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to send message")
+  }
+})
+
+app.put("/api/chat/:chatRoomId/read", authenticateToken, async (req, res) => {
+  try {
+    const { chatRoomId } = req.params
+    const userId = req.user.userId
+
+    // Mark all messages in this chat as read by this user
+    await Message.updateMany(
+      {
+        chatRoom: chatRoomId,
+        "readBy.userId": { $ne: userId },
+      },
+      {
+        $push: {
+          readBy: {
+            userId: userId,
+            readAt: new Date(),
+          },
+        },
+      },
+    )
+
+    res.json({
+      success: true,
+      message: "Messages marked as read",
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to mark messages as read")
+  }
+})
+
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`)
