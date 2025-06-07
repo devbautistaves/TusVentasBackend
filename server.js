@@ -1534,11 +1534,7 @@ const { title, message, type, priority, recipients, meetingInfo, recipientType }
 
 let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse(recipients) : recipients) : [];
 
-if (recipientType === "all") {
-  // Buscar todos los vendedores activos
-  const allVendedores = await User.find({ isActive: true, role: "seller" }).select("_id");
-  parsedRecipients = allVendedores.map(u => u._id);
-}    
+
 
 let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo) : null;
 
@@ -1591,7 +1587,11 @@ let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.pa
     pass: 'fxjm jrgg copy lidm' // Gmail requiere contraseña de aplicación
   }
 });
-
+if (recipientType === "all") {
+  // Buscar todos los vendedores activos
+  const allVendedores = await User.find({ isActive: true, role: "seller" }).select("_id");
+  parsedRecipients = allVendedores.map(u => u._id);
+}    
         // Buscar emails de usuarios destinatarios
     const usuarios = await User.find({ _id: { $in: parsedRecipients } }).select("email name");
 
