@@ -1538,7 +1538,9 @@ if (recipientType === "all") {
   // Buscar todos los vendedores activos
   const allVendedores = await User.find({ isActive: true, role: "seller" }).select("_id");
   parsedRecipients = allVendedores.map(u => u._id);
-}    let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo) : null;
+}    
+
+let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.parse(meetingInfo) : meetingInfo) : null;
 
     // Aquí viene la modificación importante: subir los archivos a Firebase
     const attachments = await Promise.all(
@@ -1593,9 +1595,11 @@ if (recipientType === "all") {
         // Buscar emails de usuarios destinatarios
     const usuarios = await User.find({ _id: { $in: parsedRecipients } }).select("email name");
 
+console.log("Usuarios destinatarios:", usuarios);
 
 for (const user of usuarios) {
   try {
+    console.log(`Enviando correo a: ${user.email}`);
     await transporter.sendMail({
       from: '"TusVentas" <tucorreo@gmail.com>',
       to: user.email,
