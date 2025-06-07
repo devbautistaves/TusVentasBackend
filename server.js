@@ -1569,6 +1569,30 @@ app.put("/api/notifications/:id/read", authenticateToken, async (req, res) => {
   }
 })
 
+app.get("/api/notifications/unread-count", authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.userId
+
+    const query = {
+      $or: [
+        { recipients: userId },
+        { recipients: { $size: 0 } }, // Global notifications
+      ],
+      isActive: true,
+      "readBy.userId": { $ne: userId },
+    }
+
+    const unreadCount = await Notification.countDocuments(query)
+
+    res.json({
+      success: true,
+      unreadCount,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to fetch unread notifications count")
+  }
+})
+
 // Chat Routes
 app.get("/api/chat/rooms", authenticateToken, async (req, res) => {
   try {
