@@ -1269,7 +1269,7 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
       });
     }
 
-    const previousStatus = sale.status; // Guardamos el estado anterior
+    const previousStatus = sale.status;
 
     sale.statusHistory.push({
       status,
@@ -1279,43 +1279,42 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
     });
 
     sale.status = status;
-    console.log("planPrice:", sale.planPrice, "commission:", sale.commission);
 
-if (status === "cancelled" && previousStatus !== "cancelled") {
-  console.log("=== CANCELANDO VENTA ===");
-  console.log("Seller ID:", sale.sellerId);
-  console.log("Plan Price:", sale.planPrice);
-  console.log("Commission:", sale.commission);
+    // === Cancelar venta ===
+    if (status === "cancelled" && previousStatus !== "cancelled") {
+      console.log("Cancelando venta. Plan y comisión a $0.");
 
-  const seller = await User.findById(sale.sellerId);
-  console.log("Current seller data:", seller);
+      // Guardar valores originales (si aún no existen)
+      if (!sale.originalPlanPrice) sale.originalPlanPrice = sale.planPrice;
+      if (!sale.originalCommission) sale.originalCommission = sale.commission;
 
-await User.findByIdAndUpdate(
-  sale.sellerId,
-  {
-    $inc: {
-      totalSales: -sale.planPrice,
-      totalCommissions: -sale.commission,
-    },
-  },
-  { new: true, runValidators: true }
-);
-
-  console.log("Comisión y venta descontadas correctamente.");
-}
-const updatedUser = await User.findById(sale.sellerId);
-console.log("Updated seller data:", updatedUser);
-    // Si el estado cambia DE "cancelled" a otro
-    if (previousStatus === "cancelled" && status !== "cancelled") {
       await User.findByIdAndUpdate(sale.sellerId, {
         $inc: {
-          totalSales: sale.planPrice,
-          totalCommissions: sale.commission,
+          totalSales: -sale.planPrice,
+          totalCommissions: -sale.commission,
         },
       });
-      console.log(
-        `Venta reactivada: Sumado $${sale.planPrice} en ventas y $${sale.commission} en comisiones para el usuario ${sale.sellerId}`,
-      );
+
+      sale.planPrice = 0;
+      sale.commission = 0;
+    }
+
+    // === Reactivar venta ===
+    if (previousStatus === "cancelled" && status !== "cancelled") {
+      const restoredPlanPrice = sale.originalPlanPrice || 0;
+      const restoredCommission = sale.originalCommission || 0;
+
+      console.log("Reactivando venta. Restaurando valores:", restoredPlanPrice, restoredCommission);
+
+      await User.findByIdAndUpdate(sale.sellerId, {
+        $inc: {
+          totalSales: restoredPlanPrice,
+          totalCommissions: restoredCommission,
+        },
+      });
+
+      sale.planPrice = restoredPlanPrice;
+      sale.commission = restoredCommission;
     }
 
     await sale.save();
@@ -1329,6 +1328,7 @@ console.log("Updated seller data:", updatedUser);
     handleError(res, error, "Failed to update sale status");
   }
 });
+
 app.get("/api/admin/plans", authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log("Fetching admin plans")
