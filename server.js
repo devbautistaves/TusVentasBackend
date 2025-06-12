@@ -268,11 +268,11 @@ const saleSchema = new mongoose.Schema(
       type: String,
       required: [true, "Plan name is required"],
     },
-    planPrice: {
-      type: Number,
-      required: [true, "Plan price is required"],
-      min: [0.01, "Plan price must be greater than 0"],
-    },
+planPrice: {
+  type: Number,
+  required: true,
+  min: [0, "Plan price must be 0 or greater"],
+},
     commission: {
       type: Number,
       required: [true, "Commission is required"],
