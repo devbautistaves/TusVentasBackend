@@ -969,7 +969,6 @@ await enviarMensajeTelegram(
   `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${user.name}`
 )
     if (sale.status !== "cancelled") {
-
     await User.findByIdAndUpdate(user._id, {
       $inc: {
         totalSales: plan.price,
