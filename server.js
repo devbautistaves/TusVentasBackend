@@ -1290,15 +1290,21 @@ if (status === "cancelled" && previousStatus !== "cancelled") {
   const seller = await User.findById(sale.sellerId);
   console.log("Current seller data:", seller);
 
-  await User.findByIdAndUpdate(sale.sellerId, {
+await User.findByIdAndUpdate(
+  sale.sellerId,
+  {
     $inc: {
       totalSales: -sale.planPrice,
       totalCommissions: -sale.commission,
     },
-  });
+  },
+  { new: true, runValidators: true }
+);
 
   console.log("Comisión y venta descontadas correctamente.");
 }
+const updatedUser = await User.findById(sale.sellerId);
+console.log("Updated seller data:", updatedUser);
     // Si el estado cambia DE "cancelled" a otro
     if (previousStatus === "cancelled" && status !== "cancelled") {
       await User.findByIdAndUpdate(sale.sellerId, {
