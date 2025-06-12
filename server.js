@@ -962,6 +962,15 @@ console.log('CUSTOMER:', req.body.customer);
     })
 
     await sale.save()
+        // Solo sumar al total si la venta no está cancelada
+    if (sale.status !== "cancelled") {
+      await User.findByIdAndUpdate(user._id, {
+        $inc: {
+          totalSales: plan.price,
+          totalCommissions: commission,
+        },
+      })
+    }
     console.log("Sale created successfully:", sale._id)
 await enviarMensajeTelegram(
   `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${user.name}`
@@ -1273,6 +1282,31 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
     })
 
     sale.status = status
+        // Si el estado cambia a cancelled, descontar la venta
+    if (status === "cancelled" && sale.status !== "cancelled") {
+      await User.findByIdAndUpdate(sale.sellerId, {
+        $inc: {
+          totalSales: -sale.planPrice,
+          totalCommissions: -sale.commission,
+        },
+      })
+      console.log(
+        `Venta cancelada: Descontado $${sale.planPrice} en ventas y $${sale.commission} en comisiones para el usuario ${sale.sellerId}`,
+      )
+    }
+
+    // Si el estado cambia de cancelled a otro estado, volver a sumar la venta
+    if (sale.status === "cancelled" && status !== "cancelled") {
+      await User.findByIdAndUpdate(sale.sellerId, {
+        $inc: {
+          totalSales: sale.planPrice,
+          totalCommissions: sale.commission,
+        },
+      })
+      console.log(
+        `Venta reactivada: Sumado $${sale.planPrice} en ventas y $${sale.commission} en comisiones para el usuario ${sale.sellerId}`,
+      )
+    }
     await sale.save()
 
     res.json({
