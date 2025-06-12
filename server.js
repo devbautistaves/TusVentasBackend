@@ -968,6 +968,7 @@ console.log('CUSTOMER:', req.body.customer);
 await enviarMensajeTelegram(
   `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${user.name}`
 )
+    if (sale.status !== "cancelled") {
 
     await User.findByIdAndUpdate(user._id, {
       $inc: {
@@ -975,20 +976,14 @@ await enviarMensajeTelegram(
         totalCommissions: commission,
       },
     })
+    }
 
     res.status(201).json({
       success: true,
       message: "Sale created successfully",
       sale,
     })
-        if (sale.status !== "cancelled") {
-      await User.findByIdAndUpdate(user._id, {
-        $inc: {
-          totalSales: plan.price,
-          totalCommissions: commission,
-        },
-      })
-    }
+
   } catch (error) {
     console.error("Error creating sale:", error)
     if (req.file) {
