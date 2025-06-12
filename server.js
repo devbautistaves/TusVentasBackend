@@ -1279,20 +1279,26 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
     });
 
     sale.status = status;
+    console.log("planPrice:", sale.planPrice, "commission:", sale.commission);
 
-    // Si el estado cambia A "cancelled"
-    if (status === "cancelled" && previousStatus !== "cancelled") {
-      await User.findByIdAndUpdate(sale.sellerId, {
-        $inc: {
-          totalSales: -sale.planPrice,
-          totalCommissions: -sale.commission,
-        },
-      });
-      console.log(
-        `Venta cancelada: Descontado $${sale.planPrice} en ventas y $${sale.commission} en comisiones para el usuario ${sale.sellerId}`,
-      );
-    }
+if (status === "cancelled" && previousStatus !== "cancelled") {
+  console.log("=== CANCELANDO VENTA ===");
+  console.log("Seller ID:", sale.sellerId);
+  console.log("Plan Price:", sale.planPrice);
+  console.log("Commission:", sale.commission);
 
+  const seller = await User.findById(sale.sellerId);
+  console.log("Current seller data:", seller);
+
+  await User.findByIdAndUpdate(sale.sellerId, {
+    $inc: {
+      totalSales: -sale.planPrice,
+      totalCommissions: -sale.commission,
+    },
+  });
+
+  console.log("Comisión y venta descontadas correctamente.");
+}
     // Si el estado cambia DE "cancelled" a otro
     if (previousStatus === "cancelled" && status !== "cancelled") {
       await User.findByIdAndUpdate(sale.sellerId, {
