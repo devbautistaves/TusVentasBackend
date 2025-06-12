@@ -1242,78 +1242,81 @@ app.get("/api/admin/sales", authenticateToken, requireAdmin, async (req, res) =>
 
 app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { status, notes } = req.body
-    const { id } = req.params
+    const { status, notes } = req.body;
+    const { id } = req.params;
 
     if (!status) {
       return res.status(400).json({
         success: false,
         error: "Status is required",
-      })
+      });
     }
 
-    const validStatuses = ["pending", "completed", "cancelled", "installed", "pending_appointment", "appointed"]
+    const validStatuses = ["pending", "completed", "cancelled", "installed", "pending_appointment", "appointed"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
         error: "Invalid status value",
         validValues: validStatuses,
-      })
+      });
     }
 
-    const sale = await Sale.findById(id)
+    const sale = await Sale.findById(id);
     if (!sale) {
       return res.status(404).json({
         success: false,
         error: "Sale not found",
-      })
+      });
     }
+
+    const previousStatus = sale.status; // Guardamos el estado anterior
 
     sale.statusHistory.push({
       status,
       changedBy: req.user.userId,
       changedAt: new Date(),
       notes: notes || "",
-    })
+    });
 
-    sale.status = status
-        // Si el estado cambia a cancelled, descontar la venta
-    if (status === "cancelled" && sale.status !== "cancelled") {
+    sale.status = status;
+
+    // Si el estado cambia A "cancelled"
+    if (status === "cancelled" && previousStatus !== "cancelled") {
       await User.findByIdAndUpdate(sale.sellerId, {
         $inc: {
           totalSales: -sale.planPrice,
           totalCommissions: -sale.commission,
         },
-      })
+      });
       console.log(
         `Venta cancelada: Descontado $${sale.planPrice} en ventas y $${sale.commission} en comisiones para el usuario ${sale.sellerId}`,
-      )
+      );
     }
 
-    // Si el estado cambia de cancelled a otro estado, volver a sumar la venta
-    if (sale.status === "cancelled" && status !== "cancelled") {
+    // Si el estado cambia DE "cancelled" a otro
+    if (previousStatus === "cancelled" && status !== "cancelled") {
       await User.findByIdAndUpdate(sale.sellerId, {
         $inc: {
           totalSales: sale.planPrice,
           totalCommissions: sale.commission,
         },
-      })
+      });
       console.log(
         `Venta reactivada: Sumado $${sale.planPrice} en ventas y $${sale.commission} en comisiones para el usuario ${sale.sellerId}`,
-      )
+      );
     }
-    await sale.save()
+
+    await sale.save();
 
     res.json({
       success: true,
       message: "Sale status updated successfully",
       sale,
-    })
+    });
   } catch (error) {
-    handleError(res, error, "Failed to update sale status")
+    handleError(res, error, "Failed to update sale status");
   }
-})
-
+});
 app.get("/api/admin/plans", authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log("Fetching admin plans")
