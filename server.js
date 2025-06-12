@@ -963,14 +963,7 @@ console.log('CUSTOMER:', req.body.customer);
 
     await sale.save()
         // Solo sumar al total si la venta no está cancelada
-    if (sale.status !== "cancelled") {
-      await User.findByIdAndUpdate(user._id, {
-        $inc: {
-          totalSales: plan.price,
-          totalCommissions: commission,
-        },
-      })
-    }
+
     console.log("Sale created successfully:", sale._id)
 await enviarMensajeTelegram(
   `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${user.name}`
@@ -988,6 +981,14 @@ await enviarMensajeTelegram(
       message: "Sale created successfully",
       sale,
     })
+        if (sale.status !== "cancelled") {
+      await User.findByIdAndUpdate(user._id, {
+        $inc: {
+          totalSales: plan.price,
+          totalCommissions: commission,
+        },
+      })
+    }
   } catch (error) {
     console.error("Error creating sale:", error)
     if (req.file) {
