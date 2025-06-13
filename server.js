@@ -1240,16 +1240,14 @@ app.get("/api/admin/sales", authenticateToken, requireAdmin, async (req, res) =>
   }
 })
 
+
 app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { status, notes } = req.body;
     const { id } = req.params;
 
     if (!status) {
-      return res.status(400).json({
-        success: false,
-        error: "Status is required",
-      });
+      return res.status(400).json({ success: false, error: "Status is required" });
     }
 
     const validStatuses = ["pending", "completed", "cancelled", "installed", "pending_appointment", "appointed"];
@@ -1263,10 +1261,7 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
 
     const sale = await Sale.findById(id);
     if (!sale) {
-      return res.status(404).json({
-        success: false,
-        error: "Sale not found",
-      });
+      return res.status(404).json({ success: false, error: "Sale not found" });
     }
 
     const previousStatus = sale.status;
@@ -1280,13 +1275,9 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
 
     sale.status = status;
 
-    // === Cancelar venta ===
+    // === CANCELAR venta ===
     if (status === "cancelled" && previousStatus !== "cancelled") {
       console.log("Cancelando venta. Plan y comisión a $0.");
-
-      // Guardar valores originales (si aún no existen)
-      if (!sale.originalPlanPrice) sale.originalPlanPrice = sale.planPrice;
-      if (!sale.originalCommission) sale.originalCommission = sale.commission;
 
       await User.findByIdAndUpdate(sale.sellerId, {
         $inc: {
@@ -1299,12 +1290,20 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
       sale.commission = 0;
     }
 
-    // === Reactivar venta ===
+    // === REACTIVAR venta ===
     if (previousStatus === "cancelled" && status !== "cancelled") {
-      const restoredPlanPrice = sale.originalPlanPrice || 0;
-      const restoredCommission = sale.originalCommission || 0;
+      console.log("Reactivando venta. Consultando plan...");
 
-      console.log("Reactivando venta. Restaurando valores:", restoredPlanPrice, restoredCommission);
+      const plan = await Plan.findById(sale.planId);
+      if (!plan) {
+        return res.status(500).json({
+          success: false,
+          error: "Associated plan not found to restore sale values",
+        });
+      }
+
+      const restoredPlanPrice = plan.price;
+      const restoredCommission = plan.price * (plan.commissionRate || 0.7); // default a 70% si no está
 
       await User.findByIdAndUpdate(sale.sellerId, {
         $inc: {
@@ -1315,6 +1314,8 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
 
       sale.planPrice = restoredPlanPrice;
       sale.commission = restoredCommission;
+
+      console.log("Venta reactivada con plan:", plan.name || plan._id);
     }
 
     await sale.save();
