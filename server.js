@@ -1291,32 +1291,35 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
     }
 
     // === REACTIVAR venta ===
-    if (previousStatus === "cancelled" && status !== "cancelled") {
-      console.log("Reactivando venta. Consultando plan...");
+   // === REACTIVAR venta ===
+if (previousStatus === "cancelled" && status !== "cancelled") {
+  console.log("Reactivando venta. Consultando plan y vendedor...");
 
-      const plan = await Plan.findById(sale.planId);
-      if (!plan) {
-        return res.status(500).json({
-          success: false,
-          error: "Associated plan not found to restore sale values",
-        });
-      }
+  const plan = await Plan.findById(sale.planId);
+  const user = await User.findById(sale.sellerId);
 
-      const restoredPlanPrice = plan.price;
-      const restoredCommission = plan.price * (plan.commissionRate || 0.7); // default a 70% si no está
+  if (!plan || !user) {
+    return res.status(500).json({
+      success: false,
+      error: "Missing plan or user to restore sale values",
+    });
+  }
 
-      await User.findByIdAndUpdate(sale.sellerId, {
-        $inc: {
-          totalSales: restoredPlanPrice,
-          totalCommissions: restoredCommission,
-        },
-      });
+  const restoredPlanPrice = plan.price;
+  const restoredCommission = restoredPlanPrice * (user.commissionRate || 0.7);
 
-      sale.planPrice = restoredPlanPrice;
-      sale.commission = restoredCommission;
+  await User.findByIdAndUpdate(sale.sellerId, {
+    $inc: {
+      totalSales: restoredPlanPrice,
+      totalCommissions: restoredCommission,
+    },
+  });
 
-      console.log("Venta reactivada con plan:", plan.name || plan._id);
-    }
+  sale.planPrice = restoredPlanPrice;
+  sale.commission = restoredCommission;
+
+  console.log(`Venta reactivada con plan "${plan.name}" y comisión del vendedor: ${user.commissionRate}`);
+}
 
     await sale.save();
 
