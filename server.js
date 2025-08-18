@@ -21,11 +21,11 @@ const app = express()
 const PORT = process.env.PORT || 5000
 
 
-const TELEGRAM_TOKEN = '7649651512:AAFe_N3slNd9Q1gjy-HJ01ldZ8I8qoYUqEQ';
 const CHAT_ID = '-1002813962725'; // tu chat_id
 
+
 async function enviarMensajeTelegram(texto) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+  const url = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`;
 
   await axios.post(url, {
     chat_id: CHAT_ID,
