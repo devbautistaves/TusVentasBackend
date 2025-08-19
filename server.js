@@ -801,11 +801,11 @@ app.post("/api/auth/login", async (req, res) => {
       })
     }
 
-    const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
-    )
+const token = jwt.sign(
+  { userId: user._id, email: user.email, role: user.role },
+  process.env.JWT_SECRET,
+  { expiresIn: process.env.JWT_EXPIRES_IN || "1h" },
+)
 
     res.json({
       success: true,
@@ -1652,8 +1652,8 @@ let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.pa
     const transporter = nodemailer.createTransport({
   service: 'gmail', // o tu proveedor SMTP
   auth: {
-    user: 'tusventasok@gmail.com',
-    pass: 'fxjm jrgg copy lidm' // Gmail requiere contraseña de aplicación
+    user: process.env.EMAIL_SMTP,
+    pass: process.env.PASSWORD_SMTP // Gmail requiere contraseña de aplicación
   }
 });
 
