@@ -8,6 +8,7 @@ const rateLimit = require("express-rate-limit")
 require("dotenv").config()
 const axios = require('axios')
 const nodemailer = require('nodemailer');
+const authenticateToken = require("./middleware/auth")
 
 
 const multer = require("multer")
@@ -39,19 +40,7 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true })
 }
 
-// Security middleware
-const authenticateToken = (req, res, next) => {
-  const authHeader = req.headers["authorization"]
-  const token = authHeader && authHeader.split(" ")[1]
 
-  if (token == null) return res.sendStatus(401)
-
-  jwt.verify(token, process.env.JWT_SECRET || "your-secret-key", (err, user) => {
-    if (err) return res.sendStatus(403)
-    req.user = user
-    next()
-  })
-}
 
 const requireAdmin = (req, res, next) => {
   if (req.user.role !== "admin") {
@@ -63,14 +52,14 @@ const requireAdmin = (req, res, next) => {
   next()
 }
 
-app.put("/api/admin/sales/:id", (req, res) => {
+app.put("/api/admin/sales/:id", authenticateToken, requireAdmin, (req, res) => {
   console.log("Llegó al backend:", req.params.id, req.body)
   res.json({ ok: true })
 })
 // Lista de statuses válidos según tu enum
 const validStatuses = ["pending", "completed", "cancelled", "installed", "pending_appointment", "appointed"]
 
-app.put("/sales/:id", async (req, res) => {
+app.put("/sales/:id", authenticateToken, async (req, res) => {
   const { id } = req.params
   const { status } = req.body
 
@@ -742,12 +731,11 @@ app.post("/api/auth/register", async (req, res) => {
 
     await enviarMensajeTelegram(`📥 <b>Nuevo registro</b>\n👤 Nombre: ${name}\n📧 Email: ${email}\n📞 Teléfono: ${phone}`);
 
-    const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET || "your-secret-key",
-      { expiresIn: process.env.JWT_EXPIRES_IN || "24h" },
-    )
-
+const token = jwt.sign(
+  { userId: user._id, email: user.email, role: user.role },
+  process.env.JWT_SECRET,
+  { expiresIn: process.env.JWT_EXPIRES_IN || "1h" },
+)
     res.status(201).json({
       success: true,
       message: "User created successfully",
