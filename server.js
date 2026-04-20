@@ -1468,13 +1468,89 @@ app.get("/api/admin/users", authenticateToken, requireAdmin, async (req, res) =>
   }
 })
 
+// Create user (Admin only)
+app.post("/api/admin/users", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { name, email, password, phone, location, role } = req.body
+
+    if (!name || !email || !password || !phone || !location) {
+      return res.status(400).json({
+        success: false,
+        error: "All fields are required",
+      })
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({
+        success: false,
+        error: "Password must be at least 6 characters long",
+      })
+    }
+
+    const existingUser = await User.findOne({ email })
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        error: "User already exists with this email",
+      })
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 12)
+
+    const user = new User({
+      name,
+      email,
+      password: hashedPassword,
+      phone,
+      location,
+      role: role || "seller",
+      commissionRate: 0.3,
+    })
+
+    await user.save()
+
+    res.status(201).json({
+      success: true,
+      message: "User created successfully",
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        location: user.location,
+        role: user.role,
+        commissionRate: user.commissionRate,
+        isActive: user.isActive,
+      },
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to create user")
+  }
+})
+
 app.put("/api/admin/users/:id", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, phone, location, commissionRate, isActive } = req.body
+    const { name, email, phone, location, role, commissionRate, isActive, password } = req.body
+
+    const updateData = {
+      name,
+      phone,
+      location,
+      isActive,
+    }
+
+    if (email) updateData.email = email
+    if (role) updateData.role = role
+    if (commissionRate !== undefined) updateData.commissionRate = Number(commissionRate)
+
+    // Hash password if provided
+    if (password && password.length >= 6) {
+      updateData.password = await bcrypt.hash(password, 12)
+    }
 
     const user = await User.findByIdAndUpdate(
       req.params.id,
-      { name, phone, location, commissionRate: Number(commissionRate), isActive },
+      updateData,
       { new: true, runValidators: true },
     ).select("-password")
 
