@@ -489,6 +489,11 @@ planPrice: {
       default: 0,
       min: [0, "Installation cost must be 0 or greater"],
     },
+    adminCost: {
+      type: Number,
+      default: 0,
+      min: [0, "Admin cost must be 0 or greater"],
+    },
     adCost: {
       type: Number,
       default: 0,
@@ -1577,10 +1582,10 @@ if (previousStatus === "cancelled" && status !== "cancelled") {
   }
 });
 
-// Actualizar costos de una venta (instalacion, anuncio, comision vendedor)
+// Actualizar costos de una venta (instalacion, admin, anuncio, comision vendedor)
 app.put("/api/admin/sales/:id/costs", authenticateToken, async (req, res) => {
   try {
-    const { installationCost, adCost, sellerCommissionPaid } = req.body;
+    const { installationCost, adminCost, adCost, sellerCommissionPaid } = req.body;
     const { id } = req.params;
 
     // Solo admin y supervisor pueden actualizar costos
@@ -1599,6 +1604,7 @@ app.put("/api/admin/sales/:id/costs", authenticateToken, async (req, res) => {
 
     // Actualizar los costos
     if (installationCost !== undefined) sale.installationCost = Number(installationCost);
+    if (adminCost !== undefined) sale.adminCost = Number(adminCost);
     if (adCost !== undefined) sale.adCost = Number(adCost);
     if (sellerCommissionPaid !== undefined) sale.sellerCommissionPaid = Number(sellerCommissionPaid);
 
