@@ -57,7 +57,7 @@ app.put("/api/admin/sales/:id", authenticateToken, requireAdmin, (req, res) => {
   res.json({ ok: true })
 })
 // Lista de statuses válidos según tu enum
-const validStatuses = ["pending", "completed", "cancelled", "installed", "pending_appointment", "appointed"]
+const validStatuses = ["pending", "completed", "cancelled", "pending_appointment", "appointed"]
 
 app.put("/sales/:id", authenticateToken, async (req, res) => {
   const { id } = req.params
@@ -282,7 +282,7 @@ planPrice: {
     status: {
       type: String,
       enum: {
-        values: ["pending", "completed", "cancelled", "installed", "pending_appointment", "appointed"],
+        values: ["pending", "completed", "cancelled", "pending_appointment", "appointed"],
         message: "Status must be one of the allowed values",
       },
       default: "pending",
@@ -292,7 +292,7 @@ planPrice: {
         status: {
           type: String,
           enum: {
-            values: ["pending", "completed", "cancelled", "installed", "pending_appointment", "appointed"],
+            values: ["pending", "completed", "cancelled", "pending_appointment", "appointed"],
           },
         },
         changedBy: {
@@ -1238,7 +1238,7 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
       return res.status(400).json({ success: false, error: "Status is required" });
     }
 
-    const validStatuses = ["pending", "completed", "cancelled", "installed", "pending_appointment", "appointed"];
+    const validStatuses = ["pending", "completed", "cancelled", "pending_appointment", "appointed"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
