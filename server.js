@@ -360,6 +360,54 @@ planPrice: {
           required: [true, "Postal code is required"],
           trim: true,
         },
+        floor: {
+          type: String,
+          trim: true,
+        },
+        apartment: {
+          type: String,
+          trim: true,
+        },
+      },
+      birthDate: {
+        type: String,
+        trim: true,
+      },
+      emergencyContact: {
+        name: {
+          type: String,
+          trim: true,
+        },
+        phone: {
+          type: String,
+          trim: true,
+        },
+      },
+    },
+    planDetail: {
+      type: String,
+      trim: true,
+    },
+    customPrice: {
+      type: Number,
+      min: [0, "Custom price must be 0 or greater"],
+    },
+    paymentInfo: {
+      paymentMethodAbono: {
+        type: String,
+        enum: ["credit_card", "cbu"],
+      },
+      cardBrand: {
+        type: String,
+        enum: ["visa", "mastercard"],
+      },
+      cbuNumber: {
+        type: String,
+        trim: true,
+      },
+      paymentMethodInstallation: {
+        type: String,
+        enum: ["transfer", "mercadopago"],
       },
     },
   },
@@ -936,6 +984,8 @@ console.log('CUSTOMER:', req.body.customer);
       },
     ]
 
+    const { planDetail, customPrice, paymentInfo } = req.body
+
     const sale = new Sale({
       sellerId: user._id,
       sellerName: user.name,
@@ -947,6 +997,9 @@ console.log('CUSTOMER:', req.body.customer);
       description,
       customerInfo,
       statusHistory,
+      planDetail: planDetail || undefined,
+      customPrice: customPrice || undefined,
+      paymentInfo: paymentInfo || undefined,
     })
 
     await sale.save()
