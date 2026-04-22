@@ -1088,8 +1088,12 @@ console.log('CUSTOMER:', req.body.customer);
 
     // Si es admin o supervisor y asigna a otro vendedor
     let targetSeller = currentUser
+    console.log("[v0] assignedSellerId from request:", assignedSellerId)
+    console.log("[v0] currentUser role:", currentUser.role)
+    
     if (assignedSellerId && (currentUser.role === "admin" || currentUser.role === "supervisor")) {
       targetSeller = await User.findById(assignedSellerId)
+      console.log("[v0] Found targetSeller:", targetSeller ? targetSeller._id : "NOT FOUND")
       if (!targetSeller) {
         return res.status(404).json({
           success: false,
@@ -1097,6 +1101,9 @@ console.log('CUSTOMER:', req.body.customer);
         })
       }
     }
+    
+    console.log("[v0] Final targetSeller._id:", targetSeller._id)
+    console.log("[v0] Final targetSeller.name:", targetSeller.name)
 
     const commission = plan.price * targetSeller.commissionRate
 
@@ -1183,7 +1190,9 @@ app.get("/api/sales", authenticateToken, async (req, res) => {
 
     const { page = 1, limit = 10, status, startDate, endDate } = req.query
 
-    const query = { sellerId: req.user.userId }
+    // Convertir userId a ObjectId para comparacion correcta
+    const userObjectId = new mongoose.Types.ObjectId(req.user.userId)
+    const query = { sellerId: userObjectId }
 
     if (status) query.status = status
     if (startDate || endDate) {
