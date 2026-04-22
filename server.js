@@ -34,6 +34,79 @@ async function enviarMensajeTelegram(texto) {
     parse_mode: 'HTML'
   });
 }
+
+// Configuracion de nodemailer para enviar emails
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
+
+async function enviarEmailNuevaVenta(sale, seller, plan) {
+  try {
+    // Buscar todos los admins activos
+    const admins = await mongoose.model('User').find({ 
+      role: 'admin', 
+      isActive: true 
+    });
+
+    if (admins.length === 0) {
+      console.log('No hay admins para notificar por email');
+      return;
+    }
+
+    const emailsAdmins = admins.map(a => a.email).join(', ');
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: emailsAdmins,
+      subject: `Nueva Venta Registrada - ${plan.name}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: #10b981; border-bottom: 2px solid #10b981; padding-bottom: 10px;">
+            Nueva Venta Registrada
+          </h2>
+          
+          <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #374151;">Detalles de la Venta</h3>
+            <p><strong>Plan:</strong> ${plan.name}</p>
+            <p><strong>Precio:</strong> $${plan.price}</p>
+            <p><strong>Vendedor:</strong> ${seller.name}</p>
+            <p><strong>Comision:</strong> $${sale.commission}</p>
+          </div>
+          
+          <div style="background: #e0f2fe; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #0369a1;">Datos del Cliente</h3>
+            <p><strong>Nombre:</strong> ${sale.customerInfo.name}</p>
+            <p><strong>Email:</strong> ${sale.customerInfo.email}</p>
+            <p><strong>Telefono:</strong> ${sale.customerInfo.phone}</p>
+            <p><strong>DNI:</strong> ${sale.customerInfo.dni}</p>
+            <p><strong>Direccion:</strong> ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, ${sale.customerInfo.address.city}, ${sale.customerInfo.address.province}</p>
+            ${sale.customerInfo.address.entreCalles ? `<p><strong>Entre Calles:</strong> ${sale.customerInfo.address.entreCalles}</p>` : ''}
+            ${sale.customerInfo.address.googleMapsLink ? `<p><strong>Google Maps:</strong> <a href="${sale.customerInfo.address.googleMapsLink}">Ver ubicacion</a></p>` : ''}
+          </div>
+          
+          <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #92400e;">Contacto de Emergencia</h3>
+            <p><strong>Nombre:</strong> ${sale.customerInfo.emergencyContact?.name || 'No especificado'}</p>
+            <p><strong>Telefono:</strong> ${sale.customerInfo.emergencyContact?.phone || 'No especificado'}</p>
+          </div>
+          
+          <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+            Este email fue enviado automaticamente desde TusVentas.
+          </p>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log('Email de nueva venta enviado a:', emailsAdmins);
+  } catch (error) {
+    console.error('Error enviando email de nueva venta:', error);
+  }
+}
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, "uploads")
 if (!fs.existsSync(uploadsDir)) {
@@ -375,6 +448,14 @@ planPrice: {
           trim: true,
         },
         apartment: {
+          type: String,
+          trim: true,
+        },
+        entreCalles: {
+          type: String,
+          trim: true,
+        },
+        googleMapsLink: {
           type: String,
           trim: true,
         },
@@ -1048,6 +1129,23 @@ console.log('CUSTOMER:', req.body.customer);
 await enviarMensajeTelegram(
   `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${targetSeller.name}`
 )
+
+    // Enviar email a los admins con los detalles de la nueva venta
+    enviarEmailNuevaVenta(sale, targetSeller, plan);
+
+    // Si la venta fue asignada a otro vendedor (no al creador), notificarle
+    if (assignedSellerId && currentUser._id.toString() !== targetSeller._id.toString()) {
+      const assignmentNotification = new Notification({
+        title: "Nueva venta asignada",
+        message: `Se te ha asignado una nueva venta del plan ${plan.name} para el cliente ${customerInfo.name}. Revisa tu panel de ventas para mas detalles.`,
+        type: "info",
+        priority: "high",
+        recipients: [targetSeller._id],
+        createdBy: currentUser._id,
+      });
+      await assignmentNotification.save();
+    }
+
     if (sale.status !== "cancelled") {
     await User.findByIdAndUpdate(targetSeller._id, {
       $inc: {
@@ -1421,6 +1519,53 @@ if (previousStatus === "cancelled" && status !== "cancelled") {
 }
 
     await sale.save();
+
+    // Crear notificacion para el vendedor sobre el cambio de estado
+    const statusLabels = {
+      pending: "Pendiente",
+      completed: "Completada",
+      cancelled: "Cancelada",
+      pending_appointment: "Pendiente de Cita",
+      appointed: "Cita Agendada"
+    };
+
+    const sellerNotification = new Notification({
+      title: "Estado de venta actualizado",
+      message: `Tu venta de ${sale.planName} para ${sale.customerInfo.name} cambio a: ${statusLabels[status] || status}${notes ? `. Nota: ${notes}` : ""}`,
+      type: "info",
+      priority: status === "cancelled" ? "high" : "medium",
+      recipients: [sale.sellerId],
+      createdBy: req.user.userId,
+    });
+    await sellerNotification.save();
+
+    // Notificar a todos los admins y supervisores sobre el cambio
+    const adminsAndSupervisors = await User.find({ 
+      role: { $in: ["admin", "supervisor"] },
+      isActive: true,
+      _id: { $ne: req.user.userId } // Excluir al que hizo el cambio
+    });
+
+    if (adminsAndSupervisors.length > 0) {
+      const adminNotification = new Notification({
+        title: "Cambio de estado en venta",
+        message: `Venta de ${sale.sellerName} (${sale.planName}) cambio de ${statusLabels[previousStatus] || previousStatus} a ${statusLabels[status] || status}`,
+        type: "info",
+        priority: "low",
+        recipients: adminsAndSupervisors.map(u => u._id),
+        createdBy: req.user.userId,
+      });
+      await adminNotification.save();
+    }
+
+    // Enviar notificacion por Telegram
+    await enviarMensajeTelegram(
+      `📋 <b>Estado actualizado</b>\n` +
+      `🔄 ${statusLabels[previousStatus] || previousStatus} → ${statusLabels[status] || status}\n` +
+      `👤 Cliente: ${sale.customerInfo.name}\n` +
+      `📦 Plan: ${sale.planName}\n` +
+      `💼 Vendedor: ${sale.sellerName}`
+    );
 
     res.json({
       success: true,
