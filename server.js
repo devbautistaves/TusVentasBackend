@@ -107,6 +107,99 @@ async function enviarEmailNuevaVenta(sale, seller, plan) {
     console.error('Error enviando email de nueva venta:', error);
   }
 }
+
+// Funcion para enviar email de cambio de estado a vendedor y supervisor
+async function enviarEmailCambioEstado(sale, previousStatus, newStatus, notes) {
+  try {
+    const statusLabels = {
+      pending: "Pendiente",
+      completed: "Instalada",
+      cancelled: "Cancelada",
+      pending_appointment: "Pendiente de Cita",
+      appointed: "Cita Agendada"
+    };
+
+    const statusColors = {
+      pending: "#f59e0b",
+      completed: "#10b981",
+      cancelled: "#ef4444",
+      pending_appointment: "#3b82f6",
+      appointed: "#8b5cf6"
+    };
+
+    // Buscar al vendedor de la venta
+    const seller = await mongoose.model('User').findById(sale.sellerId);
+    if (!seller) {
+      console.log('No se encontro el vendedor para notificar por email');
+      return;
+    }
+
+    // Buscar supervisores activos
+    const supervisors = await mongoose.model('User').find({ 
+      role: 'supervisor', 
+      isActive: true 
+    });
+
+    // Lista de destinatarios: vendedor + supervisores
+    const recipients = [seller];
+    if (supervisors.length > 0) {
+      recipients.push(...supervisors);
+    }
+
+    const emailList = recipients.map(u => u.email).filter(Boolean).join(', ');
+
+    if (!emailList) {
+      console.log('No hay emails para notificar cambio de estado');
+      return;
+    }
+
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: emailList,
+      subject: `Estado de Venta Actualizado - ${statusLabels[newStatus] || newStatus}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+          <h2 style="color: ${statusColors[newStatus] || '#374151'}; border-bottom: 2px solid ${statusColors[newStatus] || '#374151'}; padding-bottom: 10px;">
+            Estado de Venta Actualizado
+          </h2>
+          
+          <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #374151;">Cambio de Estado</h3>
+            <p style="font-size: 18px;">
+              <span style="background: ${statusColors[previousStatus] || '#gray'}; color: white; padding: 4px 12px; border-radius: 4px;">
+                ${statusLabels[previousStatus] || previousStatus}
+              </span>
+              <span style="margin: 0 10px;">→</span>
+              <span style="background: ${statusColors[newStatus] || '#gray'}; color: white; padding: 4px 12px; border-radius: 4px;">
+                ${statusLabels[newStatus] || newStatus}
+              </span>
+            </p>
+            ${notes ? `<p style="margin-top: 15px;"><strong>Nota:</strong> ${notes}</p>` : ''}
+          </div>
+          
+          <div style="background: #e0f2fe; padding: 20px; border-radius: 8px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #0369a1;">Detalles de la Venta</h3>
+            <p><strong>Cliente:</strong> ${sale.customerInfo.name}</p>
+            <p><strong>Telefono:</strong> ${sale.customerInfo.phone}</p>
+            <p><strong>Plan:</strong> ${sale.planName}</p>
+            <p><strong>Vendedor:</strong> ${sale.sellerName}</p>
+            <p><strong>Direccion:</strong> ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, ${sale.customerInfo.address.city}</p>
+          </div>
+          
+          <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
+            Este email fue enviado automaticamente desde TusVentas.
+          </p>
+        </div>
+      `,
+    };
+
+    await transporter.sendMail(mailOptions);
+    console.log('Email de cambio de estado enviado a:', emailList);
+  } catch (error) {
+    console.error('Error enviando email de cambio de estado:', error);
+  }
+}
+
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, "uploads")
 if (!fs.existsSync(uploadsDir)) {
@@ -1581,6 +1674,9 @@ if (previousStatus === "cancelled" && status !== "cancelled") {
       `💼 Vendedor: ${sale.sellerName}`
     );
 
+    // Enviar email de cambio de estado al vendedor y supervisores
+    enviarEmailCambioEstado(sale, previousStatus, status, notes);
+
     res.json({
       success: true,
       message: "Sale status updated successfully",
@@ -1626,6 +1722,89 @@ app.put("/api/admin/sales/:id/costs", authenticateToken, async (req, res) => {
     });
   } catch (error) {
     handleError(res, error, "Failed to update sale costs");
+  }
+});
+
+// Asignar/reasignar vendedor a una venta
+app.put("/api/admin/sales/:id/assign", authenticateToken, requireAdmin, async (req, res) => {
+  try {
+    const { sellerId } = req.body;
+    const { id } = req.params;
+
+    if (!sellerId) {
+      return res.status(400).json({
+        success: false,
+        error: "Seller ID is required",
+      });
+    }
+
+    const sale = await Sale.findById(id);
+    if (!sale) {
+      return res.status(404).json({ success: false, error: "Sale not found" });
+    }
+
+    const newSeller = await User.findById(sellerId);
+    if (!newSeller || !newSeller.isActive) {
+      return res.status(404).json({
+        success: false,
+        error: "Seller not found or inactive",
+      });
+    }
+
+    const oldSellerId = sale.sellerId;
+    const oldSellerName = sale.sellerName;
+
+    // Actualizar el vendedor
+    sale.sellerId = newSeller._id;
+    sale.sellerName = newSeller.name;
+
+    // Agregar al historial de estados
+    sale.statusHistory.push({
+      status: sale.status,
+      changedBy: req.user.userId,
+      changedAt: new Date(),
+      notes: `Venta reasignada de ${oldSellerName} a ${newSeller.name}`,
+    });
+
+    await sale.save();
+
+    // Si se cambio de vendedor, actualizar contadores
+    if (oldSellerId.toString() !== newSeller._id.toString() && sale.status !== "cancelled") {
+      // Quitar del vendedor anterior
+      await User.findByIdAndUpdate(oldSellerId, {
+        $inc: {
+          totalSales: -sale.planPrice,
+          totalCommissions: -sale.commission,
+        },
+      });
+
+      // Agregar al nuevo vendedor
+      await User.findByIdAndUpdate(newSeller._id, {
+        $inc: {
+          totalSales: sale.planPrice,
+          totalCommissions: sale.commission,
+        },
+      });
+
+      // Notificar al nuevo vendedor
+      const assignmentNotification = new Notification({
+        title: "Nueva venta asignada",
+        message: `Se te ha asignado una venta del plan ${sale.planName} para el cliente ${sale.customerInfo.name}.`,
+        type: "info",
+        priority: "high",
+        recipients: [newSeller._id],
+        createdBy: req.user.userId,
+      });
+      await assignmentNotification.save();
+    }
+
+    res.json({
+      success: true,
+      message: "Sale assigned successfully",
+      sale,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to assign sale");
   }
 });
 
