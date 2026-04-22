@@ -52,6 +52,16 @@ const requireAdmin = (req, res, next) => {
   next()
 }
 
+const requireAdminOrSupervisor = (req, res, next) => {
+  if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+    return res.status(403).json({
+      success: false,
+      error: "Access denied. Admin or Supervisor role required.",
+    })
+  }
+  next()
+}
+
 app.put("/api/admin/sales/:id", authenticateToken, requireAdmin, (req, res) => {
   console.log("Llegó al backend:", req.params.id, req.body)
   res.json({ ok: true })
@@ -205,8 +215,8 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: {
-        values: ["seller", "admin"],
-        message: "Role must be either seller or admin",
+        values: ["seller", "admin", "supervisor"],
+        message: "Role must be seller, admin or supervisor",
       },
       default: "seller",
     },
@@ -391,6 +401,22 @@ planPrice: {
     customPrice: {
       type: Number,
       min: [0, "Custom price must be 0 or greater"],
+    },
+    // Campos para supervisor - costos adicionales
+    installationCost: {
+      type: Number,
+      default: 0,
+      min: [0, "Installation cost must be 0 or greater"],
+    },
+    adCost: {
+      type: Number,
+      default: 0,
+      min: [0, "Ad cost must be 0 or greater"],
+    },
+    sellerCommissionPaid: {
+      type: Number,
+      default: 0,
+      min: [0, "Seller commission must be 0 or greater"],
     },
     paymentInfo: {
       paymentMethodAbono: {
@@ -909,7 +935,7 @@ app.post("/api/sales", authenticateToken, async (req, res) => {
   try {
     console.log("Creating sale - User:", req.user.userId)
 
-    const { planId, description } = req.body
+    const { planId, description, sellerId: assignedSellerId } = req.body
     console.log('REQ BODY:', req.body)
 
     let customerInfo = req.body.customerInfo
@@ -965,20 +991,33 @@ console.log('CUSTOMER:', req.body.customer);
       })
     }
 
-    const user = await User.findById(req.user.userId)
-    if (!user) {
+    // Obtener el usuario que crea la venta
+    const currentUser = await User.findById(req.user.userId)
+    if (!currentUser) {
       return res.status(404).json({
         success: false,
         error: "User not found",
       })
     }
 
-    const commission = plan.price * user.commissionRate
+    // Si es admin o supervisor y asigna a otro vendedor
+    let targetSeller = currentUser
+    if (assignedSellerId && (currentUser.role === "admin" || currentUser.role === "supervisor")) {
+      targetSeller = await User.findById(assignedSellerId)
+      if (!targetSeller) {
+        return res.status(404).json({
+          success: false,
+          error: "Assigned seller not found",
+        })
+      }
+    }
+
+    const commission = plan.price * targetSeller.commissionRate
 
     const statusHistory = [
       {
         status: "pending",
-        changedBy: user._id,
+        changedBy: currentUser._id,
         changedAt: new Date(),
         notes: "Venta registrada",
       },
@@ -987,13 +1026,13 @@ console.log('CUSTOMER:', req.body.customer);
     const { planDetail, customPrice, paymentInfo } = req.body
 
     const sale = new Sale({
-      sellerId: user._id,
-      sellerName: user.name,
+      sellerId: targetSeller._id,
+      sellerName: targetSeller.name,
       planId: plan._id,
       planName: plan.name,
       planPrice: plan.price,
       commission,
-      commissionRate: user.commissionRate,
+      commissionRate: targetSeller.commissionRate,
       description,
       customerInfo,
       statusHistory,
@@ -1007,10 +1046,10 @@ console.log('CUSTOMER:', req.body.customer);
 
     console.log("Sale created successfully:", sale._id)
 await enviarMensajeTelegram(
-  `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${user.name}`
+  `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${targetSeller.name}`
 )
     if (sale.status !== "cancelled") {
-    await User.findByIdAndUpdate(user._id, {
+    await User.findByIdAndUpdate(targetSeller._id, {
       $inc: {
         totalSales: plan.price,
         totalCommissions: commission,
@@ -1390,6 +1429,43 @@ if (previousStatus === "cancelled" && status !== "cancelled") {
     });
   } catch (error) {
     handleError(res, error, "Failed to update sale status");
+  }
+});
+
+// Actualizar costos de una venta (instalacion, anuncio, comision vendedor)
+app.put("/api/admin/sales/:id/costs", authenticateToken, async (req, res) => {
+  try {
+    const { installationCost, adCost, sellerCommissionPaid } = req.body;
+    const { id } = req.params;
+
+    // Solo admin y supervisor pueden actualizar costos
+    const currentUser = await User.findById(req.user.userId);
+    if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "supervisor")) {
+      return res.status(403).json({
+        success: false,
+        error: "Not authorized to update sale costs",
+      });
+    }
+
+    const sale = await Sale.findById(id);
+    if (!sale) {
+      return res.status(404).json({ success: false, error: "Sale not found" });
+    }
+
+    // Actualizar los costos
+    if (installationCost !== undefined) sale.installationCost = Number(installationCost);
+    if (adCost !== undefined) sale.adCost = Number(adCost);
+    if (sellerCommissionPaid !== undefined) sale.sellerCommissionPaid = Number(sellerCommissionPaid);
+
+    await sale.save();
+
+    res.json({
+      success: true,
+      message: "Sale costs updated successfully",
+      sale,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to update sale costs");
   }
 });
 
