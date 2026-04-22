@@ -424,6 +424,11 @@ const saleSchema = new mongoose.Schema(
       type: String,
       required: [true, "Seller name is required"],
     },
+    supervisorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: false,
+    },
     planId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Plan",
@@ -1091,18 +1096,50 @@ app.get("/api/users/profile", authenticateToken, async (req, res) => {
 
 app.put("/api/users/profile", authenticateToken, async (req, res) => {
   try {
-    const { name, phone, location } = req.body
+    const { name, phone, location, currentPassword, newPassword } = req.body
 
-    const user = await User.findByIdAndUpdate(
-      req.user.userId,
-      { name, phone, location },
-      { new: true, runValidators: true },
-    ).select("-password")
+    const user = await User.findById(req.user.userId)
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        error: "User not found",
+      })
+    }
+
+    // Si se quiere cambiar contraseña
+    if (currentPassword && newPassword) {
+      const isValidPassword = await bcrypt.compare(currentPassword, user.password)
+      if (!isValidPassword) {
+        return res.status(400).json({
+          success: false,
+          error: "La contraseña actual es incorrecta",
+        })
+      }
+
+      if (newPassword.length < 6) {
+        return res.status(400).json({
+          success: false,
+          error: "La nueva contraseña debe tener al menos 6 caracteres",
+        })
+      }
+
+      const hashedPassword = await bcrypt.hash(newPassword, 12)
+      user.password = hashedPassword
+    }
+
+    // Actualizar otros campos si se proporcionan
+    if (name) user.name = name
+    if (phone) user.phone = phone
+    if (location) user.location = location
+
+    await user.save()
+
+    const updatedUser = await User.findById(req.user.userId).select("-password")
 
     res.json({
       success: true,
       message: "Profile updated successfully",
-      user,
+      user: updatedUser,
     })
   } catch (error) {
     handleError(res, error, "Failed to update profile")
@@ -1211,9 +1248,13 @@ console.log('CUSTOMER:', req.body.customer);
 
     const { planDetail, customPrice, paymentInfo } = req.body
 
+    // Si el supervisor crea la venta, guardar su ID para poder seguir viendola
+    const supervisorId = currentUser.role === "supervisor" ? currentUser._id : undefined
+
     const sale = new Sale({
       sellerId: targetSeller._id,
       sellerName: targetSeller.name,
+      supervisorId: supervisorId,
       planId: plan._id,
       planName: plan.name,
       planPrice: plan.price,
@@ -1279,13 +1320,27 @@ await enviarMensajeTelegram(
 
 app.get("/api/sales", authenticateToken, async (req, res) => {
   try {
-    console.log("Fetching sales for user:", req.user.userId)
+    console.log("Fetching sales for user:", req.user.userId, "role:", req.user.role)
 
-    const { page = 1, limit = 10, status, startDate, endDate } = req.query
+    const { page = 1, limit = 100, status, startDate, endDate } = req.query
 
     // Convertir userId a ObjectId para comparacion correcta
     const userObjectId = new mongoose.Types.ObjectId(req.user.userId)
-    const query = { sellerId: userObjectId }
+    
+    let query = {}
+    
+    if (req.user.role === "supervisor") {
+      // Supervisor ve: sus propias ventas + ventas donde es supervisorId
+      query = {
+        $or: [
+          { sellerId: userObjectId },
+          { supervisorId: userObjectId }
+        ]
+      }
+    } else {
+      // Vendedor solo ve sus propias ventas
+      query = { sellerId: userObjectId }
+    }
 
     if (status) query.status = status
     if (startDate || endDate) {
@@ -1294,7 +1349,7 @@ app.get("/api/sales", authenticateToken, async (req, res) => {
       if (endDate) query.createdAt.$lte = new Date(endDate)
     }
 
-    console.log("Sales query:", query)
+    console.log("Sales query:", JSON.stringify(query))
 
     const sales = await Sale.find(query)
       .populate("planId", "name description")
@@ -1805,6 +1860,122 @@ app.put("/api/admin/sales/:id/assign", authenticateToken, requireAdmin, async (r
     });
   } catch (error) {
     handleError(res, error, "Failed to assign sale");
+  }
+});
+
+// Supervisor puede asignar ventas propias a vendedores
+app.put("/api/sales/:id/assign", authenticateToken, async (req, res) => {
+  try {
+    const { sellerId } = req.body;
+    const { id } = req.params;
+    const userId = req.user.userId;
+
+    // Solo admins y supervisores pueden asignar
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        error: "No tienes permisos para asignar ventas",
+      });
+    }
+
+    if (!sellerId) {
+      return res.status(400).json({
+        success: false,
+        error: "Seller ID is required",
+      });
+    }
+
+    const sale = await Sale.findById(id);
+    if (!sale) {
+      return res.status(404).json({ success: false, error: "Sale not found" });
+    }
+
+    // Si es supervisor, solo puede asignar sus propias ventas
+    if (req.user.role === "supervisor" && sale.sellerId.toString() !== userId) {
+      return res.status(403).json({
+        success: false,
+        error: "Solo puedes asignar tus propias ventas",
+      });
+    }
+
+    const newSeller = await User.findById(sellerId);
+    if (!newSeller || !newSeller.isActive) {
+      return res.status(404).json({
+        success: false,
+        error: "Seller not found or inactive",
+      });
+    }
+
+    // Solo puede asignar a vendedores
+    if (newSeller.role !== "seller") {
+      return res.status(400).json({
+        success: false,
+        error: "Solo puedes asignar a vendedores",
+      });
+    }
+
+    const oldSellerId = sale.sellerId;
+    const oldSellerName = sale.sellerName;
+
+    // Actualizar el vendedor (mantiene el supervisor como creador original)
+    sale.sellerId = newSeller._id;
+    sale.sellerName = newSeller.name;
+    
+    // Guardar quien es el supervisor que creo la venta (si no existe ya)
+    if (!sale.supervisorId && req.user.role === "supervisor") {
+      sale.supervisorId = userId;
+    }
+
+    // Agregar al historial de estados
+    sale.statusHistory.push({
+      status: sale.status,
+      changedBy: userId,
+      changedAt: new Date(),
+      notes: `Venta asignada de ${oldSellerName} a ${newSeller.name}`,
+    });
+
+    await sale.save();
+
+    // Si se cambio de vendedor, actualizar contadores
+    if (oldSellerId.toString() !== newSeller._id.toString() && sale.status !== "cancelled") {
+      // Quitar del vendedor anterior (si no es el supervisor)
+      const oldSeller = await User.findById(oldSellerId);
+      if (oldSeller && oldSeller.role === "seller") {
+        await User.findByIdAndUpdate(oldSellerId, {
+          $inc: {
+            totalSales: -sale.planPrice,
+            totalCommissions: -sale.commission,
+          },
+        });
+      }
+
+      // Agregar al nuevo vendedor
+      await User.findByIdAndUpdate(newSeller._id, {
+        $inc: {
+          totalSales: sale.planPrice,
+          totalCommissions: sale.commission,
+        },
+      });
+
+      // Notificar al nuevo vendedor
+      const assignmentNotification = new Notification({
+        title: "Nueva venta asignada",
+        message: `Se te ha asignado una venta del plan ${sale.planName} para el cliente ${sale.customerInfo.name}.`,
+        type: "info",
+        priority: "high",
+        recipients: [newSeller._id],
+        createdBy: userId,
+      });
+      await assignmentNotification.save();
+    }
+
+    res.json({
+      success: true,
+      message: "Sale assigned successfully",
+      sale,
+    });
+  } catch (error) {
+    handleError(error, res, "Failed to assign sale");
   }
 });
 
