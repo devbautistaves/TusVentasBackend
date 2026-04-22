@@ -1979,6 +1979,31 @@ app.put("/api/sales/:id/assign", authenticateToken, async (req, res) => {
   }
 });
 
+// Endpoint para supervisores y admins: obtener lista de vendedores activos
+app.get("/api/sellers", authenticateToken, async (req, res) => {
+  try {
+    // Solo admins y supervisores pueden ver la lista de vendedores
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        error: "No tienes permisos para ver la lista de vendedores",
+      });
+    }
+
+    const sellers = await User.find({ 
+      role: "seller", 
+      isActive: true 
+    }).select("-password");
+
+    res.json({
+      success: true,
+      sellers,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch sellers");
+  }
+});
+
 app.get("/api/admin/plans", authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log("Fetching admin plans")
