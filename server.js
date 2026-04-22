@@ -1186,14 +1186,28 @@ app.get("/api/admin/stats", authenticateToken, requireAdmin, async (req, res) =>
     const userCount = await User.countDocuments({ role: "seller" })
     const planCount = await Plan.countDocuments({ isActive: true })
 
+    // Calcular ventas por estado
+    const salesByStatusAgg = await Sale.aggregate([
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ])
+
+    const salesByStatus = {}
+    salesByStatusAgg.forEach((item) => {
+      salesByStatus[item._id] = item.count
+    })
+
     const topSellers = await Sale.aggregate([
       {
         $group: {
           _id: "$sellerId",
-          sellerName: { $first: "$sellerName" },
-          totalSales: { $sum: "$planPrice" },
+          name: { $first: "$sellerName" },
+          totalSales: { $sum: 1 },
           totalCommissions: { $sum: "$commission" },
-          salesCount: { $sum: 1 },
         },
       },
       { $sort: { totalSales: -1 } },
@@ -1213,20 +1227,25 @@ app.get("/api/admin/stats", authenticateToken, requireAdmin, async (req, res) =>
       { $limit: 10 },
     ])
 
-    const stats = totalStats[0] || {
+    const aggregatedStats = totalStats[0] || {
       totalSales: 0,
       totalCommissions: 0,
       totalCount: 0,
     }
 
-    console.log("Admin stats:", { stats, userCount, planCount })
+    console.log("Admin stats:", { aggregatedStats, userCount, planCount, salesByStatus })
 
     res.json({
       success: true,
-      stats,
-      userCount,
+      stats: {
+        totalSales: aggregatedStats.totalCount,
+        totalRevenue: aggregatedStats.totalSales,
+        totalCommissions: aggregatedStats.totalCommissions,
+        totalUsers: userCount,
+        salesByStatus,
+        topSellers,
+      },
       planCount,
-      topSellers,
       topPlans,
     })
   } catch (error) {
