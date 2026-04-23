@@ -38,17 +38,17 @@ async function enviarMensajeTelegram(texto) {
 // Configuracion de nodemailer para enviar emails
 let transporter = null;
 try {
-  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+  if (process.env.EMAIL_SMTP && process.env.PASSWORD_SMTP) {
     transporter = nodemailer.createTransport({
       service: 'gmail',
       auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
+        user: process.env.EMAIL_SMTP,
+        pass: process.env.PASSWORD_SMTP,
       },
     });
-    console.log('Nodemailer configurado correctamente con:', process.env.EMAIL_USER);
+    console.log('Nodemailer configurado correctamente con:', process.env.EMAIL_SMTP);
   } else {
-    console.warn('EMAIL_USER o EMAIL_PASS no configurados. Las notificaciones por email estaran deshabilitadas.');
+    console.warn('EMAIL_SMTP o PASSWORD_SMTP no configurados. Las notificaciones por email estaran deshabilitadas.');
   }
 } catch (error) {
   console.error('Error configurando nodemailer:', error);
@@ -77,82 +77,130 @@ async function enviarEmailNuevaVenta(sale, seller, plan) {
     
     console.log(`Enviando email de nueva venta a ${admins.length} admin(s)...`);
 
-    // 🔥 Enviar 1 mail por admin (como corresponde)
-    for (const user of admins) {
-      if (!user.email) continue;
+    // Enviar 1 mail por admin
+    for (const admin of admins) {
+      if (!admin.email) continue;
 
-      await transporter.sendMail({
-        from: '"TusVentas" <tucorreo@gmail.com>',
-        to: user.email,
-        subject: `💰 Nueva venta registrada: ${plan.name}`,
-        html: `
-          <div style="font-family: sans-serif; line-height: 1.5;">
-            
-            <img src="cid:logoTusVentas" style="max-width: 700px; margin-bottom: 20px;" alt="TusVentas" />
+      try {
+        await transporter.sendMail({
+          from: `"TusVentas" <${process.env.EMAIL_SMTP}>`,
+          to: admin.email,
+          subject: `Nueva venta registrada: ${plan.name}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+              
+              <div style="background-color: #1a1a2e; padding: 20px; text-align: center;">
+                <h1 style="color: #f59e0b; margin: 0;">TusVentas</h1>
+              </div>
 
-            <h2>Hola ${user.name}, se registró una nueva venta 📌</h2>
+              <div style="padding: 30px; background-color: #f8f9fa;">
+                <h2 style="color: #1a1a2e;">Hola ${admin.name},</h2>
+                
+                <p style="font-size: 16px; color: #333;">
+                  Se ha registrado una nueva venta en el sistema:
+                </p>
 
-            <p><strong>Plan:</strong> ${plan.name}</p>
-            <p><strong>Precio:</strong> $${plan.price}</p>
-            <p><strong>Vendedor:</strong> ${seller.name}</p>
-            <p><strong>Comisión:</strong> $${sale.commission}</p>
+                <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981;">
+                  <h3 style="margin: 0 0 15px 0; color: #1a1a2e;">Detalles de la venta</h3>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #666;"><strong>Plan:</strong></td>
+                      <td style="padding: 8px 0;">${plan.name}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #666;"><strong>Precio:</strong></td>
+                      <td style="padding: 8px 0; font-weight: bold; color: #10b981;">$${plan.price}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #666;"><strong>Vendedor:</strong></td>
+                      <td style="padding: 8px 0;">${seller.name}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #666;"><strong>Comision:</strong></td>
+                      <td style="padding: 8px 0;">$${sale.commission}</td>
+                    </tr>
+                  </table>
+                </div>
 
-            <hr />
+                <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                  <h3 style="margin: 0 0 15px 0; color: #1a1a2e;">Datos del cliente</h3>
+                  <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                      <td style="padding: 8px 0; color: #666;"><strong>Nombre:</strong></td>
+                      <td style="padding: 8px 0;">${sale.customerInfo.name}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #666;"><strong>Email:</strong></td>
+                      <td style="padding: 8px 0;">${sale.customerInfo.email || 'No especificado'}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #666;"><strong>Telefono:</strong></td>
+                      <td style="padding: 8px 0;">${sale.customerInfo.phone}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #666;"><strong>DNI:</strong></td>
+                      <td style="padding: 8px 0;">${sale.customerInfo.dni}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding: 8px 0; color: #666;"><strong>Direccion:</strong></td>
+                      <td style="padding: 8px 0;">
+                        ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, 
+                        ${sale.customerInfo.address.city}, 
+                        ${sale.customerInfo.address.province}
+                      </td>
+                    </tr>
+                    ${sale.customerInfo.address.entreCalles 
+                      ? `<tr>
+                          <td style="padding: 8px 0; color: #666;"><strong>Entre calles:</strong></td>
+                          <td style="padding: 8px 0;">${sale.customerInfo.address.entreCalles}</td>
+                        </tr>` 
+                      : ''}
+                  </table>
+                  
+                  ${sale.customerInfo.address.googleMapsLink 
+                    ? `<p style="margin-top: 15px;">
+                        <a href="${sale.customerInfo.address.googleMapsLink}" style="color: #3b82f6;">
+                          Ver ubicacion en Google Maps
+                        </a>
+                      </p>` 
+                    : ''}
+                </div>
 
-            <h3>👤 Datos del cliente</h3>
-            <p><strong>Nombre:</strong> ${sale.customerInfo.name}</p>
-            <p><strong>Email:</strong> ${sale.customerInfo.email || 'No especificado'}</p>
-            <p><strong>Teléfono:</strong> ${sale.customerInfo.phone}</p>
-            <p><strong>DNI:</strong> ${sale.customerInfo.dni}</p>
-            <p><strong>Dirección:</strong> 
-              ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, 
-              ${sale.customerInfo.address.city}, 
-              ${sale.customerInfo.address.province}
-            </p>
+                ${sale.customerInfo.emergencyContact?.name ? `
+                <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                  <h4 style="margin: 0 0 10px 0; color: #92400e;">Contacto de emergencia</h4>
+                  <p style="margin: 0;"><strong>Nombre:</strong> ${sale.customerInfo.emergencyContact.name}</p>
+                  <p style="margin: 0;"><strong>Telefono:</strong> ${sale.customerInfo.emergencyContact.phone || 'No especificado'}</p>
+                </div>
+                ` : ''}
 
-            ${sale.customerInfo.address.entreCalles 
-              ? `<p><strong>Entre calles:</strong> ${sale.customerInfo.address.entreCalles}</p>` 
-              : ''}
+                <div style="text-align: center; margin-top: 30px;">
+                  <a href="https://tusventas.netlify.app"
+                    style="display:inline-block; padding:12px 30px; background-color:#f59e0b; color:#1a1a2e; text-decoration:none; border-radius:6px; font-weight: bold;">
+                    Ver en la plataforma
+                  </a>
+                </div>
+              </div>
 
-            ${sale.customerInfo.address.googleMapsLink 
-              ? `<p><a href="${sale.customerInfo.address.googleMapsLink}">📍 Ver ubicación en Google Maps</a></p>` 
-              : ''}
+              <div style="background-color: #1a1a2e; padding: 15px; text-align: center;">
+                <small style="color: #888;">Este mensaje fue enviado automaticamente por el sistema TusVentas.</small>
+              </div>
+            </div>
+          `
+        });
 
-            <hr />
-
-            <h3>🚨 Contacto de emergencia</h3>
-            <p><strong>Nombre:</strong> ${sale.customerInfo.emergencyContact?.name || 'No especificado'}</p>
-            <p><strong>Teléfono:</strong> ${sale.customerInfo.emergencyContact?.phone || 'No especificado'}</p>
-
-            <p>
-              <a href="https://tusventas.netlify.app"
-                style="display:inline-block; padding:10px 15px; background-color:#0b6efd; color:white; text-decoration:none; border-radius:5px;">
-                Ver en la plataforma
-              </a>
-            </p>
-
-            <hr />
-            <small>Este mensaje fue enviado automáticamente por el sistema TusVentas.</small>
-          </div>
-        `,
-        attachments: [
-          {
-            filename: 'bannertusventas.png',
-            path: './bannertusventas.png',
-            cid: 'logoTusVentas'
-          }
-        ]
-      });
-
-      console.log(`Email enviado a ${user.email}`);
+        console.log(`Email de nueva venta enviado a ${admin.email}`);
+      } catch (emailError) {
+        console.error(`Error enviando email a ${admin.email}:`, emailError.message);
+      }
     }
 
   } catch (error) {
-    console.error('Error enviando email de nueva venta:', error);
+    console.error('Error enviando email de nueva venta:', error.message);
   }
 }
 
-// Funcion para enviar email de cambio de estado a vendedor y supervisor
+// Funcion para enviar email de cambio de estado al dueno de la venta (vendedor)
 async function enviarEmailCambioEstado(sale, previousStatus, newStatus, notes) {
   try {
     // Verificar que el transporter este configurado
@@ -161,7 +209,7 @@ async function enviarEmailCambioEstado(sale, previousStatus, newStatus, notes) {
       return;
     }
     
-    console.log(`Enviando email de cambio de estado: ${previousStatus} -> ${newStatus}`);
+    console.log(`Preparando email de cambio de estado: ${previousStatus} -> ${newStatus}`);
     
     const statusLabels = {
       pending: "Pendiente",
@@ -181,86 +229,103 @@ async function enviarEmailCambioEstado(sale, previousStatus, newStatus, notes) {
 
     const User = mongoose.model('User');
 
-    // Vendedor
+    // Obtener el dueno de la venta (vendedor)
     const seller = await User.findById(sale.sellerId);
 
-    // Supervisores
-    const supervisors = await User.find({
-      role: 'supervisor',
-      isActive: true
-    });
-
-    const recipients = [];
-    if (seller) recipients.push(seller);
-    if (supervisors.length > 0) recipients.push(...supervisors);
-
-    if (recipients.length === 0) {
-      console.log('No hay usuarios para notificar');
+    if (!seller) {
+      console.log('No se encontro el vendedor dueno de la venta');
       return;
     }
 
-    // 🔥 Enviar 1 mail por usuario (como tu sistema actual)
-    for (const user of recipients) {
-      if (!user.email) continue;
-
-      await transporter.sendMail({
-        from: '"TusVentas" <tucorreo@gmail.com>',
-        to: user.email,
-        subject: `🔄 Cambio de estado de venta: ${statusLabels[newStatus] || newStatus}`,
-        html: `
-          <div style="font-family: sans-serif; line-height: 1.5;">
-            
-            <img src="cid:logoTusVentas" style="max-width: 700px; margin-bottom: 20px;" alt="TusVentas" />
-
-            <h2>Hola ${user.name}, hubo un cambio en una venta 📌</h2>
-
-            <p style="font-size: 16px;">
-              <strong>Estado:</strong>
-              <span style="background:${statusColors[previousStatus] || '#6b7280'}; color:white; padding:4px 10px; border-radius:4px;">
-                ${statusLabels[previousStatus] || previousStatus}
-              </span>
-              →
-              <span style="background:${statusColors[newStatus] || '#6b7280'}; color:white; padding:4px 10px; border-radius:4px;">
-                ${statusLabels[newStatus] || newStatus}
-              </span>
-            </p>
-
-            ${notes ? `<p><strong>Nota:</strong> ${notes}</p>` : ''}
-
-            <hr />
-
-            <h3>📋 Detalles de la venta</h3>
-            <p><strong>Cliente:</strong> ${sale.customerInfo.name}</p>
-            <p><strong>Teléfono:</strong> ${sale.customerInfo.phone}</p>
-            <p><strong>Plan:</strong> ${sale.planName}</p>
-            <p><strong>Vendedor:</strong> ${sale.sellerName}</p>
-            <p><strong>Dirección:</strong> ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, ${sale.customerInfo.address.city}</p>
-
-            <p>
-              <a href="https://tusventas.netlify.app"
-                style="display:inline-block; padding:10px 15px; background-color:#0b6efd; color:white; text-decoration:none; border-radius:5px;">
-                Ver en la plataforma
-              </a>
-            </p>
-
-            <hr />
-            <small>Este mensaje fue enviado automáticamente por el sistema TusVentas.</small>
-          </div>
-        `,
-        attachments: [
-          {
-            filename: 'bannertusventas.png',
-            path: './bannertusventas.png',
-            cid: 'logoTusVentas'
-          }
-        ]
-      });
-
-      console.log(`Email enviado a ${user.email}`);
+    if (!seller.email) {
+      console.log(`El vendedor ${seller.name} no tiene email configurado`);
+      return;
     }
 
+    console.log(`Enviando email de cambio de estado a ${seller.email} (${seller.name})`);
+
+    await transporter.sendMail({
+      from: `"TusVentas" <${process.env.EMAIL_SMTP}>`,
+      to: seller.email,
+      subject: `Cambio de estado de venta: ${statusLabels[newStatus] || newStatus}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+          
+          <div style="background-color: #1a1a2e; padding: 20px; text-align: center;">
+            <h1 style="color: #f59e0b; margin: 0;">TusVentas</h1>
+          </div>
+
+          <div style="padding: 30px; background-color: #f8f9fa;">
+            <h2 style="color: #1a1a2e;">Hola ${seller.name},</h2>
+            
+            <p style="font-size: 16px; color: #333;">
+              Una de tus ventas ha cambiado de estado:
+            </p>
+
+            <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${statusColors[newStatus] || '#6b7280'};">
+              <p style="margin: 0 0 10px 0;">
+                <strong>Estado anterior:</strong> 
+                <span style="background:${statusColors[previousStatus] || '#6b7280'}; color:white; padding:4px 12px; border-radius:4px; font-size: 14px;">
+                  ${statusLabels[previousStatus] || previousStatus}
+                </span>
+              </p>
+              <p style="margin: 0;">
+                <strong>Nuevo estado:</strong> 
+                <span style="background:${statusColors[newStatus] || '#6b7280'}; color:white; padding:4px 12px; border-radius:4px; font-size: 14px;">
+                  ${statusLabels[newStatus] || newStatus}
+                </span>
+              </p>
+            </div>
+
+            ${notes ? `
+            <div style="background-color: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <strong>Nota del cambio:</strong><br/>
+              ${notes}
+            </div>
+            ` : ''}
+
+            <h3 style="color: #1a1a2e; border-bottom: 2px solid #f59e0b; padding-bottom: 10px;">
+              Detalles de la venta
+            </h3>
+            
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; color: #666;"><strong>Cliente:</strong></td>
+                <td style="padding: 8px 0;">${sale.customerInfo.name}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;"><strong>Telefono:</strong></td>
+                <td style="padding: 8px 0;">${sale.customerInfo.phone}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;"><strong>Plan:</strong></td>
+                <td style="padding: 8px 0;">${sale.planName}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #666;"><strong>Direccion:</strong></td>
+                <td style="padding: 8px 0;">${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, ${sale.customerInfo.address.city}</td>
+              </tr>
+            </table>
+
+            <div style="text-align: center; margin-top: 30px;">
+              <a href="https://tusventas.netlify.app"
+                style="display:inline-block; padding:12px 30px; background-color:#f59e0b; color:#1a1a2e; text-decoration:none; border-radius:6px; font-weight: bold;">
+                Ver en la plataforma
+              </a>
+            </div>
+          </div>
+
+          <div style="background-color: #1a1a2e; padding: 15px; text-align: center;">
+            <small style="color: #888;">Este mensaje fue enviado automaticamente por el sistema TusVentas.</small>
+          </div>
+        </div>
+      `
+    });
+
+    console.log(`Email de cambio de estado enviado exitosamente a ${seller.email}`);
+
   } catch (error) {
-    console.error('Error enviando email de cambio de estado:', error);
+    console.error('Error enviando email de cambio de estado:', error.message);
   }
 }
 
@@ -373,7 +438,7 @@ const connectDB = async () => {
     const collections = await mongoose.connection.db.listCollections().toArray()
     console.log(`📋 Collections found: ${collections.map((c) => c.name).join(", ")}`)
 
-    // Eventos de conexión para MongoDB Atlas
+    // Eventos de conexi��n para MongoDB Atlas
     mongoose.connection.on("error", (err) => {
       console.error("❌ MongoDB Atlas connection error:", err)
     })
