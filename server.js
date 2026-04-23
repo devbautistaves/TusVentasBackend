@@ -36,16 +36,32 @@ async function enviarMensajeTelegram(texto) {
 }
 
 // Configuracion de nodemailer para enviar emails
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+let transporter = null;
+try {
+  if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+    console.log('Nodemailer configurado correctamente con:', process.env.EMAIL_USER);
+  } else {
+    console.warn('EMAIL_USER o EMAIL_PASS no configurados. Las notificaciones por email estaran deshabilitadas.');
+  }
+} catch (error) {
+  console.error('Error configurando nodemailer:', error);
+}
 
 async function enviarEmailNuevaVenta(sale, seller, plan) {
   try {
+    // Verificar que el transporter este configurado
+    if (!transporter) {
+      console.log('Email transporter no configurado. Saltando envio de email de nueva venta.');
+      return;
+    }
+
     const User = mongoose.model('User');
 
     // Buscar admins activos
@@ -58,6 +74,8 @@ async function enviarEmailNuevaVenta(sale, seller, plan) {
       console.log('No hay admins para notificar');
       return;
     }
+    
+    console.log(`Enviando email de nueva venta a ${admins.length} admin(s)...`);
 
     // 🔥 Enviar 1 mail por admin (como corresponde)
     for (const user of admins) {
@@ -137,6 +155,14 @@ async function enviarEmailNuevaVenta(sale, seller, plan) {
 // Funcion para enviar email de cambio de estado a vendedor y supervisor
 async function enviarEmailCambioEstado(sale, previousStatus, newStatus, notes) {
   try {
+    // Verificar que el transporter este configurado
+    if (!transporter) {
+      console.log('Email transporter no configurado. Saltando envio de email de cambio de estado.');
+      return;
+    }
+    
+    console.log(`Enviando email de cambio de estado: ${previousStatus} -> ${newStatus}`);
+    
     const statusLabels = {
       pending: "Pendiente",
       completed: "Instalada",
