@@ -26,13 +26,20 @@ const CHAT_ID = '-1002813962725'; // tu chat_id
 
 
 async function enviarMensajeTelegram(texto) {
-  const url = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`;
-
-  await axios.post(url, {
-    chat_id: CHAT_ID,
-    text: texto,
-    parse_mode: 'HTML'
-  });
+  try {
+    if (!process.env.TELEGRAM_TOKEN) {
+      return; // Silenciosamente saltar si no hay token
+    }
+    const url = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`;
+    await axios.post(url, {
+      chat_id: CHAT_ID,
+      text: texto,
+      parse_mode: 'HTML'
+    });
+  } catch (error) {
+    console.error('Error enviando mensaje de Telegram:', error.message);
+    // No propagar el error para no afectar el endpoint
+  }
 }
 
 // Configuracion de nodemailer para enviar emails
@@ -1116,13 +1123,12 @@ app.post("/api/auth/register", async (req, res) => {
 
     await user.save()
 
-    await enviarMensajeTelegram(`📥 <b>Nuevo registro</b>\n👤 Nombre: ${name}\n📧 Email: ${email}\n📞 Teléfono: ${phone}`);
-
-const token = jwt.sign(
-  { userId: user._id, email: user.email, role: user.role },
-  process.env.JWT_SECRET,
-  { expiresIn: process.env.JWT_EXPIRES_IN || "1h" },
-)
+    const token = jwt.sign(
+      { userId: user._id, email: user.email, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || "1h" },
+    )
+    
     res.status(201).json({
       success: true,
       message: "User created successfully",
@@ -1137,6 +1143,16 @@ const token = jwt.sign(
         commissionRate: user.commissionRate,
       },
     })
+
+    // Enviar notificacion de forma asincrona
+    setImmediate(async () => {
+      try {
+        await enviarMensajeTelegram(`<b>Nuevo registro</b>\nNombre: ${name}\nEmail: ${email}\nTelefono: ${phone}`);
+      } catch (e) {
+        console.error('Error enviando Telegram:', e.message);
+      }
+    });
+
   } catch (error) {
     handleError(res, error, "Registration failed")
   }
@@ -1401,12 +1417,6 @@ console.log('CUSTOMER:', req.body.customer);
         // Solo sumar al total si la venta no está cancelada
 
     console.log("Sale created successfully:", sale._id)
-await enviarMensajeTelegram(
-  `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${targetSeller.name}`
-)
-
-    // Enviar email a los admins con los detalles de la nueva venta
-    enviarEmailNuevaVenta(sale, targetSeller, plan);
 
     // Si la venta fue asignada a otro vendedor (no al creador), notificarle
     if (assignedSellerId && currentUser._id.toString() !== targetSeller._id.toString()) {
@@ -1422,19 +1432,37 @@ await enviarMensajeTelegram(
     }
 
     if (sale.status !== "cancelled") {
-    await User.findByIdAndUpdate(targetSeller._id, {
-      $inc: {
-        totalSales: plan.price,
-        totalCommissions: commission,
-      },
-    })
+      await User.findByIdAndUpdate(targetSeller._id, {
+        $inc: {
+          totalSales: plan.price,
+          totalCommissions: commission,
+        },
+      })
     }
 
+    // Responder inmediatamente con exito
     res.status(201).json({
       success: true,
       message: "Sale created successfully",
       sale,
     })
+
+    // Enviar notificaciones de forma asincrona (no bloquean la respuesta)
+    setImmediate(async () => {
+      try {
+        await enviarMensajeTelegram(
+          `Nueva venta:\nMonto: $${plan.price}\nProducto: ${plan.name}\nVendedor: ${targetSeller.name}`
+        );
+      } catch (e) {
+        console.error('Error enviando Telegram:', e.message);
+      }
+
+      try {
+        await enviarEmailNuevaVenta(sale, targetSeller, plan);
+      } catch (e) {
+        console.error('Error enviando email:', e.message);
+      }
+    });
 
   } catch (error) {
     console.error("Error creating sale:", error)
@@ -1849,23 +1877,34 @@ if (previousStatus === "cancelled" && status !== "cancelled") {
       await adminNotification.save();
     }
 
-    // Enviar notificacion por Telegram
-    await enviarMensajeTelegram(
-      `📋 <b>Estado actualizado</b>\n` +
-      `🔄 ${statusLabels[previousStatus] || previousStatus} → ${statusLabels[status] || status}\n` +
-      `👤 Cliente: ${sale.customerInfo.name}\n` +
-      `📦 Plan: ${sale.planName}\n` +
-      `💼 Vendedor: ${sale.sellerName}`
-    );
-
-    // Enviar email de cambio de estado al vendedor y supervisores
-    enviarEmailCambioEstado(sale, previousStatus, status, notes);
-
+    // Responder inmediatamente con exito
     res.json({
       success: true,
       message: "Sale status updated successfully",
       sale,
     });
+
+    // Enviar notificaciones de forma asincrona (no bloquean la respuesta)
+    setImmediate(async () => {
+      try {
+        await enviarMensajeTelegram(
+          `<b>Estado actualizado</b>\n` +
+          `${statusLabels[previousStatus] || previousStatus} -> ${statusLabels[status] || status}\n` +
+          `Cliente: ${sale.customerInfo.name}\n` +
+          `Plan: ${sale.planName}\n` +
+          `Vendedor: ${sale.sellerName}`
+        );
+      } catch (e) {
+        console.error('Error enviando Telegram:', e.message);
+      }
+
+      try {
+        await enviarEmailCambioEstado(sale, previousStatus, status, notes);
+      } catch (e) {
+        console.error('Error enviando email:', e.message);
+      }
+    });
+
   } catch (error) {
     handleError(res, error, "Failed to update sale status");
   }
