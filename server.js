@@ -46,63 +46,89 @@ const transporter = nodemailer.createTransport({
 
 async function enviarEmailNuevaVenta(sale, seller, plan) {
   try {
-    // Buscar todos los admins activos
-    const admins = await mongoose.model('User').find({ 
-      role: 'admin', 
-      isActive: true 
+    const User = mongoose.model('User');
+
+    // Buscar admins activos
+    const admins = await User.find({
+      role: 'admin',
+      isActive: true
     });
 
     if (admins.length === 0) {
-      console.log('No hay admins para notificar por email');
+      console.log('No hay admins para notificar');
       return;
     }
 
-    const emailsAdmins = admins.map(a => a.email).join(', ');
+    // 🔥 Enviar 1 mail por admin (como corresponde)
+    for (const user of admins) {
+      if (!user.email) continue;
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: emailsAdmins,
-      subject: `Nueva Venta Registrada - ${plan.name}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: #10b981; border-bottom: 2px solid #10b981; padding-bottom: 10px;">
-            Nueva Venta Registrada
-          </h2>
-          
-          <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0; color: #374151;">Detalles de la Venta</h3>
+      await transporter.sendMail({
+        from: '"TusVentas" <tucorreo@gmail.com>',
+        to: user.email,
+        subject: `💰 Nueva venta registrada: ${plan.name}`,
+        html: `
+          <div style="font-family: sans-serif; line-height: 1.5;">
+            
+            <img src="cid:logoTusVentas" style="max-width: 700px; margin-bottom: 20px;" alt="TusVentas" />
+
+            <h2>Hola ${user.name}, se registró una nueva venta 📌</h2>
+
             <p><strong>Plan:</strong> ${plan.name}</p>
             <p><strong>Precio:</strong> $${plan.price}</p>
             <p><strong>Vendedor:</strong> ${seller.name}</p>
-            <p><strong>Comision:</strong> $${sale.commission}</p>
-          </div>
-          
-          <div style="background: #e0f2fe; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0; color: #0369a1;">Datos del Cliente</h3>
-            <p><strong>Nombre:</strong> ${sale.customerInfo.name}</p>
-            <p><strong>Email:</strong> ${sale.customerInfo.email}</p>
-            <p><strong>Telefono:</strong> ${sale.customerInfo.phone}</p>
-            <p><strong>DNI:</strong> ${sale.customerInfo.dni}</p>
-            <p><strong>Direccion:</strong> ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, ${sale.customerInfo.address.city}, ${sale.customerInfo.address.province}</p>
-            ${sale.customerInfo.address.entreCalles ? `<p><strong>Entre Calles:</strong> ${sale.customerInfo.address.entreCalles}</p>` : ''}
-            ${sale.customerInfo.address.googleMapsLink ? `<p><strong>Google Maps:</strong> <a href="${sale.customerInfo.address.googleMapsLink}">Ver ubicacion</a></p>` : ''}
-          </div>
-          
-          <div style="background: #fef3c7; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0; color: #92400e;">Contacto de Emergencia</h3>
-            <p><strong>Nombre:</strong> ${sale.customerInfo.emergencyContact?.name || 'No especificado'}</p>
-            <p><strong>Telefono:</strong> ${sale.customerInfo.emergencyContact?.phone || 'No especificado'}</p>
-          </div>
-          
-          <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
-            Este email fue enviado automaticamente desde TusVentas.
-          </p>
-        </div>
-      `,
-    };
+            <p><strong>Comisión:</strong> $${sale.commission}</p>
 
-    await transporter.sendMail(mailOptions);
-    console.log('Email de nueva venta enviado a:', emailsAdmins);
+            <hr />
+
+            <h3>👤 Datos del cliente</h3>
+            <p><strong>Nombre:</strong> ${sale.customerInfo.name}</p>
+            <p><strong>Email:</strong> ${sale.customerInfo.email || 'No especificado'}</p>
+            <p><strong>Teléfono:</strong> ${sale.customerInfo.phone}</p>
+            <p><strong>DNI:</strong> ${sale.customerInfo.dni}</p>
+            <p><strong>Dirección:</strong> 
+              ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, 
+              ${sale.customerInfo.address.city}, 
+              ${sale.customerInfo.address.province}
+            </p>
+
+            ${sale.customerInfo.address.entreCalles 
+              ? `<p><strong>Entre calles:</strong> ${sale.customerInfo.address.entreCalles}</p>` 
+              : ''}
+
+            ${sale.customerInfo.address.googleMapsLink 
+              ? `<p><a href="${sale.customerInfo.address.googleMapsLink}">📍 Ver ubicación en Google Maps</a></p>` 
+              : ''}
+
+            <hr />
+
+            <h3>🚨 Contacto de emergencia</h3>
+            <p><strong>Nombre:</strong> ${sale.customerInfo.emergencyContact?.name || 'No especificado'}</p>
+            <p><strong>Teléfono:</strong> ${sale.customerInfo.emergencyContact?.phone || 'No especificado'}</p>
+
+            <p>
+              <a href="https://tusventas.netlify.app"
+                style="display:inline-block; padding:10px 15px; background-color:#0b6efd; color:white; text-decoration:none; border-radius:5px;">
+                Ver en la plataforma
+              </a>
+            </p>
+
+            <hr />
+            <small>Este mensaje fue enviado automáticamente por el sistema TusVentas.</small>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: 'bannertusventas.png',
+            path: './bannertusventas.png',
+            cid: 'logoTusVentas'
+          }
+        ]
+      });
+
+      console.log(`Email enviado a ${user.email}`);
+    }
+
   } catch (error) {
     console.error('Error enviando email de nueva venta:', error);
   }
@@ -127,74 +153,86 @@ async function enviarEmailCambioEstado(sale, previousStatus, newStatus, notes) {
       appointed: "#8b5cf6"
     };
 
-    // Buscar al vendedor de la venta
-    const seller = await mongoose.model('User').findById(sale.sellerId);
-    if (!seller) {
-      console.log('No se encontro el vendedor para notificar por email');
-      return;
-    }
+    const User = mongoose.model('User');
 
-    // Buscar supervisores activos
-    const supervisors = await mongoose.model('User').find({ 
-      role: 'supervisor', 
-      isActive: true 
+    // Vendedor
+    const seller = await User.findById(sale.sellerId);
+
+    // Supervisores
+    const supervisors = await User.find({
+      role: 'supervisor',
+      isActive: true
     });
 
-    // Lista de destinatarios: vendedor + supervisores
-    const recipients = [seller];
-    if (supervisors.length > 0) {
-      recipients.push(...supervisors);
-    }
+    const recipients = [];
+    if (seller) recipients.push(seller);
+    if (supervisors.length > 0) recipients.push(...supervisors);
 
-    const emailList = recipients.map(u => u.email).filter(Boolean).join(', ');
-
-    if (!emailList) {
-      console.log('No hay emails para notificar cambio de estado');
+    if (recipients.length === 0) {
+      console.log('No hay usuarios para notificar');
       return;
     }
 
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: emailList,
-      subject: `Estado de Venta Actualizado - ${statusLabels[newStatus] || newStatus}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-          <h2 style="color: ${statusColors[newStatus] || '#374151'}; border-bottom: 2px solid ${statusColors[newStatus] || '#374151'}; padding-bottom: 10px;">
-            Estado de Venta Actualizado
-          </h2>
-          
-          <div style="background: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0; color: #374151;">Cambio de Estado</h3>
-            <p style="font-size: 18px;">
-              <span style="background: ${statusColors[previousStatus] || '#gray'}; color: white; padding: 4px 12px; border-radius: 4px;">
+    // 🔥 Enviar 1 mail por usuario (como tu sistema actual)
+    for (const user of recipients) {
+      if (!user.email) continue;
+
+      await transporter.sendMail({
+        from: '"TusVentas" <tucorreo@gmail.com>',
+        to: user.email,
+        subject: `🔄 Cambio de estado de venta: ${statusLabels[newStatus] || newStatus}`,
+        html: `
+          <div style="font-family: sans-serif; line-height: 1.5;">
+            
+            <img src="cid:logoTusVentas" style="max-width: 700px; margin-bottom: 20px;" alt="TusVentas" />
+
+            <h2>Hola ${user.name}, hubo un cambio en una venta 📌</h2>
+
+            <p style="font-size: 16px;">
+              <strong>Estado:</strong>
+              <span style="background:${statusColors[previousStatus] || '#6b7280'}; color:white; padding:4px 10px; border-radius:4px;">
                 ${statusLabels[previousStatus] || previousStatus}
               </span>
-              <span style="margin: 0 10px;">→</span>
-              <span style="background: ${statusColors[newStatus] || '#gray'}; color: white; padding: 4px 12px; border-radius: 4px;">
+              →
+              <span style="background:${statusColors[newStatus] || '#6b7280'}; color:white; padding:4px 10px; border-radius:4px;">
                 ${statusLabels[newStatus] || newStatus}
               </span>
             </p>
-            ${notes ? `<p style="margin-top: 15px;"><strong>Nota:</strong> ${notes}</p>` : ''}
-          </div>
-          
-          <div style="background: #e0f2fe; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0; color: #0369a1;">Detalles de la Venta</h3>
+
+            ${notes ? `<p><strong>Nota:</strong> ${notes}</p>` : ''}
+
+            <hr />
+
+            <h3>📋 Detalles de la venta</h3>
             <p><strong>Cliente:</strong> ${sale.customerInfo.name}</p>
-            <p><strong>Telefono:</strong> ${sale.customerInfo.phone}</p>
+            <p><strong>Teléfono:</strong> ${sale.customerInfo.phone}</p>
             <p><strong>Plan:</strong> ${sale.planName}</p>
             <p><strong>Vendedor:</strong> ${sale.sellerName}</p>
-            <p><strong>Direccion:</strong> ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, ${sale.customerInfo.address.city}</p>
-          </div>
-          
-          <p style="color: #6b7280; font-size: 12px; margin-top: 30px;">
-            Este email fue enviado automaticamente desde TusVentas.
-          </p>
-        </div>
-      `,
-    };
+            <p><strong>Dirección:</strong> ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, ${sale.customerInfo.address.city}</p>
 
-    await transporter.sendMail(mailOptions);
-    console.log('Email de cambio de estado enviado a:', emailList);
+            <p>
+              <a href="https://tusventas.netlify.app"
+                style="display:inline-block; padding:10px 15px; background-color:#0b6efd; color:white; text-decoration:none; border-radius:5px;">
+                Ver en la plataforma
+              </a>
+            </p>
+
+            <hr />
+            <small>Este mensaje fue enviado automáticamente por el sistema TusVentas.</small>
+          </div>
+        `,
+        attachments: [
+          {
+            filename: 'bannertusventas.png',
+            path: './bannertusventas.png',
+            cid: 'logoTusVentas'
+          }
+        ]
+      });
+
+      console.log(`Email enviado a ${user.email}`);
+    }
+
   } catch (error) {
     console.error('Error enviando email de cambio de estado:', error);
   }
