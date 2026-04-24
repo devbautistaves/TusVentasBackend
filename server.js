@@ -356,13 +356,23 @@ const requireAdmin = (req, res, next) => {
 
 const requireAdminOrSupervisor = (req, res, next) => {
   if (req.user.role !== "admin" && req.user.role !== "supervisor") {
-    return res.status(403).json({
-      success: false,
-      error: "Access denied. Admin or Supervisor role required.",
-    })
+  return res.status(403).json({
+  success: false,
+  error: "Access denied. Admin or Supervisor role required.",
+  })
   }
   next()
-}
+  }
+
+const requireAdminOrSupport = (req, res, next) => {
+  if (req.user.role !== "admin" && req.user.role !== "support") {
+  return res.status(403).json({
+  success: false,
+  error: "Access denied. Admin or Support role required.",
+  })
+  }
+  next()
+  }
 
 app.put("/api/admin/sales/:id", authenticateToken, requireAdmin, (req, res) => {
   console.log("Llegó al backend:", req.params.id, req.body)
@@ -517,8 +527,8 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: {
-        values: ["seller", "admin", "supervisor"],
-        message: "Role must be seller, admin or supervisor",
+        values: ["seller", "admin", "supervisor", "support"],
+        message: "Role must be seller, admin, supervisor or support",
       },
       default: "seller",
     },
@@ -1636,8 +1646,149 @@ app.get("/api/dashboard/stats", authenticateToken, async (req, res) => {
   }
 })
 
+// Support Routes - Gestion de ventas sin acceso a comisiones
+app.get("/api/support/sales", authenticateToken, requireAdminOrSupport, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, status, sellerId, startDate, endDate } = req.query
+    
+    const query = {}
+    if (status) query.status = status
+    if (sellerId) query.sellerId = sellerId
+    if (startDate || endDate) {
+      query.createdAt = {}
+      if (startDate) query.createdAt.$gte = new Date(startDate)
+      if (endDate) query.createdAt.$lte = new Date(endDate)
+    }
+
+    const sales = await Sale.find(query)
+      .populate("sellerId", "name email")
+      .populate("supervisorId", "name email")
+      .sort({ createdAt: -1 })
+      .limit(Number(limit))
+      .skip((Number(page) - 1) * Number(limit))
+
+    const total = await Sale.countDocuments(query)
+
+    res.json({
+      success: true,
+      sales,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        pages: Math.ceil(total / Number(limit)),
+        hasNext: page * limit < total,
+        hasPrev: page > 1,
+      },
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to fetch sales")
+  }
+})
+
+// Support - Estadisticas basicas (sin datos financieros)
+app.get("/api/support/stats", authenticateToken, requireAdminOrSupport, async (req, res) => {
+  try {
+    const totalSales = await Sale.countDocuments()
+    const pendingSales = await Sale.countDocuments({ status: "pending" })
+    const pendingAppointment = await Sale.countDocuments({ status: "pending_appointment" })
+    const appointedSales = await Sale.countDocuments({ status: "appointed" })
+    const completedSales = await Sale.countDocuments({ status: "completed" })
+    const cancelledSales = await Sale.countDocuments({ status: "cancelled" })
+    const totalSellers = await User.countDocuments({ role: "seller", isActive: true })
+    const totalSupervisors = await User.countDocuments({ role: "supervisor", isActive: true })
+
+    res.json({
+      success: true,
+      stats: {
+        totalSales,
+        pendingSales,
+        pendingAppointment,
+        appointedSales,
+        completedSales,
+        cancelledSales,
+        totalSellers,
+        totalSupervisors,
+      },
+    })
+  } catch (error) {
+    handleError(error, res, "Failed to fetch support stats")
+  }
+})
+
+// Support - Actualizar estado de venta
+app.put("/api/support/sales/:id/status", authenticateToken, requireAdminOrSupport, async (req, res) => {
+  try {
+    const { status, notes, statusDate } = req.body
+    const { id } = req.params
+
+    if (!status) {
+      return res.status(400).json({ success: false, error: "Status is required" })
+    }
+
+    const validStatuses = ["pending", "completed", "cancelled", "pending_appointment", "appointed"]
+    if (!validStatuses.includes(status)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid status value",
+        validValues: validStatuses,
+      })
+    }
+
+    const sale = await Sale.findById(id)
+    if (!sale) {
+      return res.status(404).json({ success: false, error: "Sale not found" })
+    }
+
+    const previousStatus = sale.status
+    const effectiveDate = statusDate ? new Date(statusDate) : new Date()
+
+    sale.statusHistory.push({
+      status,
+      changedBy: req.user.userId,
+      changedAt: effectiveDate,
+      notes: notes || "",
+    })
+
+    sale.status = status
+    
+    if (status === "appointed") {
+      sale.appointedDate = effectiveDate
+    } else if (status === "completed") {
+      sale.completedDate = effectiveDate
+    }
+
+    await sale.save()
+
+    res.json({
+      success: true,
+      message: "Sale status updated successfully",
+      sale,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to update sale status")
+  }
+})
+
+// Support - Obtener vendedores (solo nombres, sin comisiones)
+app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async (req, res) => {
+  try {
+    const sellers = await User.find({ 
+      role: { $in: ["seller", "supervisor"] },
+      isActive: true 
+    }).select("_id name email role")
+
+    res.json({
+      success: true,
+      sellers,
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to fetch sellers")
+  }
+})
+
 // Admin Routes
-app.get("/api/admin/stats", authenticateToken, requireAdmin, async (req, res) => {
+  app.get("/api/admin/stats", authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log("Fetching admin stats")
 
