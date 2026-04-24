@@ -779,6 +779,12 @@ planPrice: {
       type: Date,
       default: null,
     },
+    // Numero de CTO para ventas activadas
+    ctoNumber: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -1389,7 +1395,7 @@ console.log('CUSTOMER:', req.body.customer);
     console.log("[v0] assignedSellerId from request:", assignedSellerId)
     console.log("[v0] currentUser role:", currentUser.role)
     
-    if (assignedSellerId && (currentUser.role === "admin" || currentUser.role === "supervisor")) {
+    if (assignedSellerId && (currentUser.role === "admin" || currentUser.role === "supervisor" || currentUser.role === "support")) {
       targetSeller = await User.findById(assignedSellerId)
       console.log("[v0] Found targetSeller:", targetSeller ? targetSeller._id : "NOT FOUND")
       if (!targetSeller) {
@@ -1719,7 +1725,7 @@ app.get("/api/support/stats", authenticateToken, requireAdminOrSupport, async (r
 // Support - Actualizar estado de venta
 app.put("/api/support/sales/:id/status", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
-    const { status, notes, statusDate } = req.body
+    const { status, notes, statusDate, ctoNumber } = req.body
     const { id } = req.params
 
     if (!status) {
@@ -1756,6 +1762,10 @@ app.put("/api/support/sales/:id/status", authenticateToken, requireAdminOrSuppor
       sale.appointedDate = effectiveDate
     } else if (status === "completed") {
       sale.completedDate = effectiveDate
+      // Guardar numero de CTO si se proporciona
+      if (ctoNumber) {
+        sale.ctoNumber = ctoNumber
+      }
     }
 
     await sale.save()
@@ -1788,7 +1798,7 @@ app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async 
 })
 
 // Admin Routes
-  app.get("/api/admin/stats", authenticateToken, requireAdmin, async (req, res) => {
+  app.get("/api/admin/stats", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
     console.log("Fetching admin stats")
 
@@ -1874,7 +1884,7 @@ app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async 
   }
 })
 
-app.get("/api/admin/sales", authenticateToken, requireAdmin, async (req, res) => {
+app.get("/api/admin/sales", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
     console.log("Fetching admin sales")
 
@@ -1921,9 +1931,9 @@ app.get("/api/admin/sales", authenticateToken, requireAdmin, async (req, res) =>
 })
 
 
-app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (req, res) => {
+app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
-    const { status, notes, statusDate } = req.body;
+    const { status, notes, statusDate, ctoNumber } = req.body;
     const { id } = req.params;
 
     if (!status) {
@@ -1963,6 +1973,10 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
       sale.appointedDate = effectiveDate;
     } else if (status === "completed") {
       sale.completedDate = effectiveDate;
+      // Guardar numero de CTO si se proporciona
+      if (ctoNumber) {
+        sale.ctoNumber = ctoNumber;
+      }
     }
 
     // === CANCELAR venta ===
@@ -2090,9 +2104,9 @@ app.put("/api/admin/sales/:id/costs", authenticateToken, async (req, res) => {
     const { installationCost, adminCost, adCost, sellerCommissionPaid } = req.body;
     const { id } = req.params;
 
-    // Solo admin y supervisor pueden actualizar costos
+    // Solo admin, supervisor y support pueden actualizar costos
     const currentUser = await User.findById(req.user.userId);
-    if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "supervisor")) {
+    if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "supervisor" && currentUser.role !== "support")) {
       return res.status(403).json({
         success: false,
         error: "Not authorized to update sale costs",
@@ -2130,7 +2144,7 @@ app.put("/api/admin/sales/:id/costs", authenticateToken, async (req, res) => {
 });
 
 // Asignar/reasignar vendedor a una venta
-app.put("/api/admin/sales/:id/assign", authenticateToken, requireAdmin, async (req, res) => {
+app.put("/api/admin/sales/:id/assign", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
     const { sellerId } = req.body;
     const { id } = req.params;
@@ -2353,7 +2367,7 @@ app.get("/api/sellers", authenticateToken, async (req, res) => {
   }
 });
 
-app.get("/api/admin/plans", authenticateToken, requireAdmin, async (req, res) => {
+app.get("/api/admin/plans", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
     console.log("Fetching admin plans")
 
@@ -2464,7 +2478,7 @@ app.delete("/api/admin/plans/:id", authenticateToken, requireAdmin, async (req, 
   }
 })
 
-app.get("/api/admin/users", authenticateToken, requireAdmin, async (req, res) => {
+app.get("/api/admin/users", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
     console.log("Fetching admin users")
 
