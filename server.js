@@ -19,7 +19,7 @@ const bucket = require('./firebaseAdmin');
 
 
 const app = express()
-const PORT = process.env.PORT || 3000
+const PORT = 3000
 
 
 const CHAT_ID = '-1002813962725'; // tu chat_id
