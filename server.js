@@ -1022,6 +1022,45 @@ attachments: [
   },
 )
 
+// SupervisorAdCost Schema - Costos de anuncio mensuales por supervisor
+const supervisorAdCostSchema = new mongoose.Schema(
+  {
+    supervisorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "Supervisor ID is required"],
+    },
+    amount: {
+      type: Number,
+      required: [true, "Amount is required"],
+      default: 0,
+    },
+    month: {
+      type: String,
+      required: [true, "Month is required"],
+      match: [/^\d{4}-\d{2}$/, "Month must be in YYYY-MM format"],
+    },
+    notes: {
+      type: String,
+      trim: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  },
+  {
+    timestamps: true,
+  }
+)
+
+// Index compuesto para asegurar un solo registro por supervisor/mes
+supervisorAdCostSchema.index({ supervisorId: 1, month: 1 }, { unique: true })
+
 // Models
 const User = mongoose.model("User", userSchema)
 const Sale = mongoose.model("Sale", saleSchema)
@@ -1029,6 +1068,7 @@ const Plan = mongoose.model("Plan", planSchema)
 const Notification = mongoose.model("Notification", notificationSchema)
 const ChatRoom = mongoose.model("ChatRoom", chatRoomSchema)
 const Message = mongoose.model("Message", messageSchema)
+const SupervisorAdCost = mongoose.model("SupervisorAdCost", supervisorAdCostSchema)
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage()
@@ -3350,6 +3390,166 @@ app.put("/api/chat/:chatRoomId/read", authenticateToken, async (req, res) => {
     handleError(res, error, "Failed to mark messages as read")
   }
 })
+
+// ==================== SUPERVISOR AD COSTS ENDPOINTS ====================
+
+// Obtener todos los costos de anuncio (solo admin)
+app.get("/api/admin/ad-costs", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: "Solo los administradores pueden ver todos los costos de anuncio",
+      });
+    }
+
+    const { month, supervisorId } = req.query;
+    const filter = {};
+    
+    if (month) filter.month = month;
+    if (supervisorId) filter.supervisorId = supervisorId;
+
+    const adCosts = await SupervisorAdCost.find(filter)
+      .populate("supervisorId", "name email")
+      .populate("createdBy", "name")
+      .populate("updatedBy", "name")
+      .sort({ month: -1, createdAt: -1 });
+
+    res.json({
+      success: true,
+      adCosts,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch ad costs");
+  }
+});
+
+// Crear o actualizar costo de anuncio (solo admin)
+app.post("/api/admin/ad-costs", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: "Solo los administradores pueden crear costos de anuncio",
+      });
+    }
+
+    const { supervisorId, amount, month, notes } = req.body;
+
+    if (!supervisorId || amount === undefined || !month) {
+      return res.status(400).json({
+        success: false,
+        error: "Se requiere supervisorId, amount y month",
+      });
+    }
+
+    // Verificar que el supervisor existe y es supervisor
+    const supervisor = await User.findById(supervisorId);
+    if (!supervisor || supervisor.role !== "supervisor") {
+      return res.status(404).json({
+        success: false,
+        error: "Supervisor no encontrado o no es un supervisor",
+      });
+    }
+
+    // Buscar si ya existe un registro para este supervisor/mes
+    let adCost = await SupervisorAdCost.findOne({ supervisorId, month });
+
+    if (adCost) {
+      // Actualizar existente
+      adCost.amount = amount;
+      adCost.notes = notes || adCost.notes;
+      adCost.updatedBy = req.user.userId;
+      await adCost.save();
+    } else {
+      // Crear nuevo
+      adCost = new SupervisorAdCost({
+        supervisorId,
+        amount,
+        month,
+        notes,
+        createdBy: req.user.userId,
+        updatedBy: req.user.userId,
+      });
+      await adCost.save();
+    }
+
+    // Obtener datos populados
+    const populatedAdCost = await SupervisorAdCost.findById(adCost._id)
+      .populate("supervisorId", "name email")
+      .populate("createdBy", "name")
+      .populate("updatedBy", "name");
+
+    res.json({
+      success: true,
+      message: adCost.isNew ? "Costo de anuncio creado" : "Costo de anuncio actualizado",
+      adCost: populatedAdCost,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        error: "Ya existe un costo de anuncio para este supervisor y mes",
+      });
+    }
+    handleError(res, error, "Failed to create/update ad cost");
+  }
+});
+
+// Eliminar costo de anuncio (solo admin)
+app.delete("/api/admin/ad-costs/:id", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: "Solo los administradores pueden eliminar costos de anuncio",
+      });
+    }
+
+    const { id } = req.params;
+    const adCost = await SupervisorAdCost.findByIdAndDelete(id);
+
+    if (!adCost) {
+      return res.status(404).json({
+        success: false,
+        error: "Costo de anuncio no encontrado",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Costo de anuncio eliminado",
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to delete ad cost");
+  }
+});
+
+// Obtener costos de anuncio de un supervisor (para el propio supervisor)
+app.get("/api/ad-costs/my", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        error: "Solo los supervisores pueden ver sus costos de anuncio",
+      });
+    }
+
+    const { month } = req.query;
+    const filter = { supervisorId: req.user.userId };
+    if (month) filter.month = month;
+
+    const adCosts = await SupervisorAdCost.find(filter)
+      .sort({ month: -1 });
+
+    res.json({
+      success: true,
+      adCosts,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch my ad costs");
+  }
+});
 
 // Start the server
 app.listen(PORT, () => {
