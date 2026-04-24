@@ -219,19 +219,23 @@ async function enviarEmailCambioEstado(sale, previousStatus, newStatus, notes) {
     console.log(`Preparando email de cambio de estado: ${previousStatus} -> ${newStatus}`);
     
     const statusLabels = {
-      pending: "Pendiente",
+      pending: "Cargada",
+      pending_signature: "Pendiente de Firma",
+      pending_appointment: "Pendiente de Turno",
+      observed: "Observada",
+      appointed: "Turnada",
       completed: "Instalada",
-      cancelled: "Cancelada",
-      pending_appointment: "Pendiente de Cita",
-      appointed: "Cita Agendada"
+      cancelled: "Cancelada"
     };
 
     const statusColors = {
       pending: "#f59e0b",
+      pending_signature: "#f97316",
+      pending_appointment: "#a855f7",
+      observed: "#d97706",
+      appointed: "#3b82f6",
       completed: "#10b981",
-      cancelled: "#ef4444",
-      pending_appointment: "#3b82f6",
-      appointed: "#8b5cf6"
+      cancelled: "#ef4444"
     };
 
     const User = mongoose.model('User');
@@ -379,7 +383,7 @@ app.put("/api/admin/sales/:id", authenticateToken, requireAdmin, (req, res) => {
   res.json({ ok: true })
 })
 // Lista de statuses válidos según tu enum
-const validStatuses = ["pending", "completed", "cancelled", "pending_appointment", "appointed"]
+const validStatuses = ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"]
 
 app.put("/sales/:id", authenticateToken, async (req, res) => {
   const { id } = req.params
@@ -609,7 +613,7 @@ planPrice: {
     status: {
       type: String,
       enum: {
-        values: ["pending", "completed", "cancelled", "pending_appointment", "appointed"],
+        values: ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"],
         message: "Status must be one of the allowed values",
       },
       default: "pending",
@@ -619,7 +623,7 @@ planPrice: {
         status: {
           type: String,
           enum: {
-            values: ["pending", "completed", "cancelled", "pending_appointment", "appointed"],
+            values: ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"],
           },
         },
         changedBy: {
@@ -1732,7 +1736,7 @@ app.put("/api/support/sales/:id/status", authenticateToken, requireAdminOrSuppor
       return res.status(400).json({ success: false, error: "Status is required" })
     }
 
-    const validStatuses = ["pending", "completed", "cancelled", "pending_appointment", "appointed"]
+    const validStatuses = ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"]
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -1940,7 +1944,7 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport,
       return res.status(400).json({ success: false, error: "Status is required" });
     }
 
-    const validStatuses = ["pending", "completed", "cancelled", "pending_appointment", "appointed"];
+    const validStatuses = ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -2029,12 +2033,14 @@ if (previousStatus === "cancelled" && status !== "cancelled") {
 
     // Crear notificacion para el vendedor sobre el cambio de estado
     const statusLabels = {
-      pending: "Pendiente",
-      completed: "Completada",
-      cancelled: "Cancelada",
-      pending_appointment: "Pendiente de Cita",
-      appointed: "Cita Agendada"
-    };
+  pending: "Cargada",
+  pending_signature: "Pendiente de Firma",
+  pending_appointment: "Pendiente de Turno",
+  observed: "Observada",
+  appointed: "Turnada",
+  completed: "Instalada",
+  cancelled: "Cancelada"
+  };
 
     const sellerNotification = new Notification({
       title: "Estado de venta actualizado",
