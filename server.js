@@ -71,27 +71,27 @@ async function enviarEmailNuevaVenta(sale, seller, plan) {
 
     const User = mongoose.model('User');
 
-    // Buscar admins activos
-    const admins = await User.find({
-      role: 'admin',
+    // Buscar admins y usuarios de soporte activos
+    const recipients = await User.find({
+      role: { $in: ['admin', 'support'] },
       isActive: true
     });
 
-    if (admins.length === 0) {
-      console.log('No hay admins para notificar');
+    if (recipients.length === 0) {
+      console.log('No hay admins ni soporte para notificar');
       return;
     }
     
-    console.log(`Enviando email de nueva venta a ${admins.length} admin(s)...`);
+    console.log(`Enviando email de nueva venta a ${recipients.length} usuario(s) (admins y soporte)...`);
 
-    // Enviar 1 mail por admin
-    for (const admin of admins) {
-      if (!admin.email) continue;
+    // Enviar 1 mail por destinatario (admin o soporte)
+    for (const recipient of recipients) {
+      if (!recipient.email) continue;
 
       try {
         await transporter.sendMail({
           from: `"TusVentas" <${process.env.EMAIL_SMTP}>`,
-          to: admin.email,
+          to: recipient.email,
           subject: `Nueva venta registrada: ${plan.name}`,
           html: `
             <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
@@ -101,7 +101,7 @@ async function enviarEmailNuevaVenta(sale, seller, plan) {
               </div>
 
               <div style="padding: 30px; background-color: #f8f9fa;">
-                <h2 style="color: #1a1a2e;">Hola ${admin.name},</h2>
+                <h2 style="color: #1a1a2e;">Hola ${recipient.name},</h2>
                 
                 <p style="font-size: 16px; color: #333;">
                   Se ha registrado una nueva venta en el sistema:
@@ -196,9 +196,9 @@ async function enviarEmailNuevaVenta(sale, seller, plan) {
           `
         });
 
-        console.log(`Email de nueva venta enviado a ${admin.email}`);
+        console.log(`Email de nueva venta enviado a ${recipient.email} (${recipient.role})`);
       } catch (emailError) {
-        console.error(`Error enviando email a ${admin.email}:`, emailError.message);
+        console.error(`Error enviando email a ${recipient.email}:`, emailError.message);
       }
     }
 
