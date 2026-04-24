@@ -756,6 +756,19 @@ planPrice: {
         enum: ["transfer", "mercadopago"],
       },
     },
+    // Fechas de estados para el corte mensual
+    appointedDate: {
+      type: Date,
+      default: null,
+    },
+    completedDate: {
+      type: Date,
+      default: null,
+    },
+    installationCostDate: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,
@@ -1759,7 +1772,7 @@ app.get("/api/admin/sales", authenticateToken, requireAdmin, async (req, res) =>
 
 app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { status, notes } = req.body;
+    const { status, notes, statusDate } = req.body;
     const { id } = req.params;
 
     if (!status) {
@@ -1781,15 +1794,25 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (r
     }
 
     const previousStatus = sale.status;
+    
+    // Determinar la fecha a usar (la enviada o la actual)
+    const effectiveDate = statusDate ? new Date(statusDate) : new Date();
 
     sale.statusHistory.push({
       status,
       changedBy: req.user.userId,
-      changedAt: new Date(),
+      changedAt: effectiveDate,
       notes: notes || "",
     });
 
     sale.status = status;
+    
+    // Guardar fechas especificas segun el estado
+    if (status === "appointed") {
+      sale.appointedDate = effectiveDate;
+    } else if (status === "completed") {
+      sale.completedDate = effectiveDate;
+    }
 
     // === CANCELAR venta ===
     if (status === "cancelled" && previousStatus !== "cancelled") {
@@ -1930,13 +1953,20 @@ app.put("/api/admin/sales/:id/costs", authenticateToken, async (req, res) => {
       return res.status(404).json({ success: false, error: "Sale not found" });
     }
 
-    // Actualizar los costos
-    if (installationCost !== undefined) sale.installationCost = Number(installationCost);
-    if (adminCost !== undefined) sale.adminCost = Number(adminCost);
-    if (adCost !== undefined) sale.adCost = Number(adCost);
-    if (sellerCommissionPaid !== undefined) sale.sellerCommissionPaid = Number(sellerCommissionPaid);
-
-    await sale.save();
+  // Actualizar los costos
+  // Si se coloca costo de instalacion por primera vez, guardar la fecha
+  if (installationCost !== undefined) {
+    const newInstallationCost = Number(installationCost);
+    if (newInstallationCost > 0 && (!sale.installationCost || sale.installationCost === 0)) {
+      sale.installationCostDate = new Date();
+    }
+    sale.installationCost = newInstallationCost;
+  }
+  if (adminCost !== undefined) sale.adminCost = Number(adminCost);
+  if (adCost !== undefined) sale.adCost = Number(adCost);
+  if (sellerCommissionPaid !== undefined) sale.sellerCommissionPaid = Number(sellerCommissionPaid);
+  
+  await sale.save();
 
     res.json({
       success: true,
