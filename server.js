@@ -542,6 +542,11 @@ const userSchema = new mongoose.Schema(
       min: [0, "Commission rate cannot be negative"],
       max: [1, "Commission rate cannot exceed 100%"],
     },
+    supervisorBaseCommission: {
+      type: Number,
+      default: 750000,
+      min: [0, "Supervisor base commission cannot be negative"],
+    },
     isActive: {
       type: Boolean,
       default: true,
