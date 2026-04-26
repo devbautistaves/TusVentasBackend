@@ -547,6 +547,12 @@ const userSchema = new mongoose.Schema(
       default: 750000,
       min: [0, "Supervisor base commission cannot be negative"],
     },
+    // Comision fija por venta (si es null/undefined, usa la escala por tiers)
+    fixedCommissionPerSale: {
+      type: Number,
+      default: null,
+      min: [0, "Fixed commission cannot be negative"],
+    },
     isActive: {
       type: Boolean,
       default: true,
@@ -780,6 +786,12 @@ planPrice: {
       type: Date,
       default: null,
     },
+    // Horario del turno (AM: 8:30-13:30, PM: 13:30-18:30)
+    appointmentSlot: {
+      type: String,
+      enum: ["AM", "PM"],
+      default: null,
+    },
     completedDate: {
       type: Date,
       default: null,
@@ -790,6 +802,12 @@ planPrice: {
     },
     // Numero de CTO para ventas activadas
     ctoNumber: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    // Numero de contrato
+    contractNumber: {
       type: String,
       trim: true,
       default: null,
@@ -1829,6 +1847,30 @@ app.put("/api/support/sales/:id/status", authenticateToken, requireAdminOrSuppor
   }
 })
 
+// Actualizar numero de contrato de una venta
+app.put("/api/admin/sales/:id/contract", authenticateToken, requireAdminOrSupport, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { contractNumber } = req.body;
+
+    const sale = await Sale.findById(id);
+    if (!sale) {
+      return res.status(404).json({ success: false, error: "Sale not found" });
+    }
+
+    sale.contractNumber = contractNumber || "";
+    await sale.save();
+
+    res.json({
+      success: true,
+      message: "Contract number updated successfully",
+      sale,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to update contract number");
+  }
+});
+
 // Support - Obtener vendedores (solo nombres, sin comisiones)
 app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
@@ -1982,7 +2024,7 @@ app.get("/api/admin/sales", authenticateToken, requireAdminOrSupport, async (req
 
 app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
-    const { status, notes, statusDate, ctoNumber } = req.body;
+    const { status, notes, statusDate, ctoNumber, appointmentSlot } = req.body;
     const { id } = req.params;
 
     if (!status) {
@@ -2020,6 +2062,10 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport,
     // Guardar fechas especificas segun el estado
     if (status === "appointed") {
       sale.appointedDate = effectiveDate;
+      // Guardar horario del turno si se proporciona
+      if (appointmentSlot) {
+        sale.appointmentSlot = appointmentSlot;
+      }
     } else if (status === "completed") {
       sale.completedDate = effectiveDate;
       // Guardar numero de CTO si se proporciona
@@ -2627,7 +2673,7 @@ app.post("/api/admin/users", authenticateToken, requireAdmin, async (req, res) =
 
 app.put("/api/admin/users/:id", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, email, phone, location, role, commissionRate, isActive, password } = req.body
+    const { name, email, phone, location, role, commissionRate, isActive, password, fixedCommissionPerSale } = req.body
 
     const updateData = {
       name,
@@ -2639,6 +2685,11 @@ app.put("/api/admin/users/:id", authenticateToken, requireAdmin, async (req, res
     if (email) updateData.email = email
     if (role) updateData.role = role
     if (commissionRate !== undefined) updateData.commissionRate = Number(commissionRate)
+    
+    // Comision fija por venta (null = usa escala por tiers)
+    if (fixedCommissionPerSale !== undefined) {
+      updateData.fixedCommissionPerSale = fixedCommissionPerSale === null ? null : Number(fixedCommissionPerSale)
+    }
 
     // Hash password if provided
     if (password && password.length >= 6) {
