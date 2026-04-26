@@ -789,7 +789,7 @@ planPrice: {
     // Horario del turno (AM: 8:30-13:30, PM: 13:30-18:30)
     appointmentSlot: {
       type: String,
-      enum: ["AM", "PM"],
+      enum: ["AM", "PM", null],
       default: null,
     },
     completedDate: {
