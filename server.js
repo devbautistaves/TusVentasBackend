@@ -19,327 +19,21 @@ const bucket = require('./firebaseAdmin');
 
 
 const app = express()
-const PORT = 3000
+const PORT = process.env.PORT || 5000
 
 
 const CHAT_ID = '-1002813962725'; // tu chat_id
 
 
 async function enviarMensajeTelegram(texto) {
-  try {
-    if (!process.env.TELEGRAM_TOKEN) {
-      return; // Silenciosamente saltar si no hay token
-    }
-    const url = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`;
-    await axios.post(url, {
-      chat_id: CHAT_ID,
-      text: texto,
-      parse_mode: 'HTML'
-    });
-  } catch (error) {
-    console.error('Error enviando mensaje de Telegram:', error.message);
-    // No propagar el error para no afectar el endpoint
-  }
+  const url = `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/sendMessage`;
+
+  await axios.post(url, {
+    chat_id: CHAT_ID,
+    text: texto,
+    parse_mode: 'HTML'
+  });
 }
-
-// Configuracion de nodemailer para enviar emails
-let transporter = null;
-try {
-  if (process.env.EMAIL_SMTP && process.env.PASSWORD_SMTP) {
-    transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_SMTP,
-        pass: process.env.PASSWORD_SMTP,
-      },
-    });
-    console.log('Nodemailer configurado correctamente con:', process.env.EMAIL_SMTP);
-  } else {
-    console.warn('EMAIL_SMTP o PASSWORD_SMTP no configurados. Las notificaciones por email estaran deshabilitadas.');
-  }
-} catch (error) {
-  console.error('Error configurando nodemailer:', error);
-}
-
-async function enviarEmailNuevaVenta(sale, seller, plan) {
-  try {
-    // Verificar que el transporter este configurado
-    if (!transporter) {
-      console.log('Email transporter no configurado. Saltando envio de email de nueva venta.');
-      return;
-    }
-
-    const User = mongoose.model('User');
-
-    // Buscar admins y usuarios de soporte activos
-    const recipients = await User.find({
-      role: { $in: ['admin', 'support'] },
-      isActive: true
-    });
-
-    if (recipients.length === 0) {
-      console.log('No hay admins ni soporte para notificar');
-      return;
-    }
-    
-    console.log(`Enviando email de nueva venta a ${recipients.length} usuario(s) (admins y soporte)...`);
-
-    // Enviar 1 mail por destinatario (admin o soporte)
-    for (const recipient of recipients) {
-      if (!recipient.email) continue;
-
-      try {
-        await transporter.sendMail({
-          from: `"TusVentas" <${process.env.EMAIL_SMTP}>`,
-          to: recipient.email,
-          subject: `Nueva venta registrada: ${plan.name}`,
-          html: `
-            <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
-              
-              <div style="background-color: #1a1a2e; padding: 20px; text-align: center;">
-                <h1 style="color: #f59e0b; margin: 0;">TusVentas</h1>
-              </div>
-
-              <div style="padding: 30px; background-color: #f8f9fa;">
-                <h2 style="color: #1a1a2e;">Hola ${recipient.name},</h2>
-                
-                <p style="font-size: 16px; color: #333;">
-                  Se ha registrado una nueva venta en el sistema:
-                </p>
-
-                <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #10b981;">
-                  <h3 style="margin: 0 0 15px 0; color: #1a1a2e;">Detalles de la venta</h3>
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <tr>
-                      <td style="padding: 8px 0; color: #666;"><strong>Plan:</strong></td>
-                      <td style="padding: 8px 0;">${plan.name}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 8px 0; color: #666;"><strong>Precio:</strong></td>
-                      <td style="padding: 8px 0; font-weight: bold; color: #10b981;">$${plan.price}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 8px 0; color: #666;"><strong>Vendedor:</strong></td>
-                      <td style="padding: 8px 0;">${seller.name}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 8px 0; color: #666;"><strong>Comision:</strong></td>
-                      <td style="padding: 8px 0;">$${sale.commission}</td>
-                    </tr>
-                  </table>
-                </div>
-
-                <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
-                  <h3 style="margin: 0 0 15px 0; color: #1a1a2e;">Datos del cliente</h3>
-                  <table style="width: 100%; border-collapse: collapse;">
-                    <tr>
-                      <td style="padding: 8px 0; color: #666;"><strong>Nombre:</strong></td>
-                      <td style="padding: 8px 0;">${sale.customerInfo.name}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 8px 0; color: #666;"><strong>Email:</strong></td>
-                      <td style="padding: 8px 0;">${sale.customerInfo.email || 'No especificado'}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 8px 0; color: #666;"><strong>Telefono:</strong></td>
-                      <td style="padding: 8px 0;">${sale.customerInfo.phone}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 8px 0; color: #666;"><strong>DNI:</strong></td>
-                      <td style="padding: 8px 0;">${sale.customerInfo.dni}</td>
-                    </tr>
-                    <tr>
-                      <td style="padding: 8px 0; color: #666;"><strong>Direccion:</strong></td>
-                      <td style="padding: 8px 0;">
-                        ${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, 
-                        ${sale.customerInfo.address.city}, 
-                        ${sale.customerInfo.address.province}
-                      </td>
-                    </tr>
-                    ${sale.customerInfo.address.entreCalles 
-                      ? `<tr>
-                          <td style="padding: 8px 0; color: #666;"><strong>Entre calles:</strong></td>
-                          <td style="padding: 8px 0;">${sale.customerInfo.address.entreCalles}</td>
-                        </tr>` 
-                      : ''}
-                  </table>
-                  
-                  ${sale.customerInfo.address.googleMapsLink 
-                    ? `<p style="margin-top: 15px;">
-                        <a href="${sale.customerInfo.address.googleMapsLink}" style="color: #3b82f6;">
-                          Ver ubicacion en Google Maps
-                        </a>
-                      </p>` 
-                    : ''}
-                </div>
-
-                ${sale.customerInfo.emergencyContact?.name ? `
-                <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
-                  <h4 style="margin: 0 0 10px 0; color: #92400e;">Contacto de emergencia</h4>
-                  <p style="margin: 0;"><strong>Nombre:</strong> ${sale.customerInfo.emergencyContact.name}</p>
-                  <p style="margin: 0;"><strong>Telefono:</strong> ${sale.customerInfo.emergencyContact.phone || 'No especificado'}</p>
-                </div>
-                ` : ''}
-
-                <div style="text-align: center; margin-top: 30px;">
-                  <a href="https://tusventas.netlify.app"
-                    style="display:inline-block; padding:12px 30px; background-color:#f59e0b; color:#1a1a2e; text-decoration:none; border-radius:6px; font-weight: bold;">
-                    Ver en la plataforma
-                  </a>
-                </div>
-              </div>
-
-              <div style="background-color: #1a1a2e; padding: 15px; text-align: center;">
-                <small style="color: #888;">Este mensaje fue enviado automaticamente por el sistema TusVentas.</small>
-              </div>
-            </div>
-          `
-        });
-
-        console.log(`Email de nueva venta enviado a ${recipient.email} (${recipient.role})`);
-      } catch (emailError) {
-        console.error(`Error enviando email a ${recipient.email}:`, emailError.message);
-      }
-    }
-
-  } catch (error) {
-    console.error('Error enviando email de nueva venta:', error.message);
-  }
-}
-
-// Funcion para enviar email de cambio de estado al dueno de la venta (vendedor)
-async function enviarEmailCambioEstado(sale, previousStatus, newStatus, notes) {
-  try {
-    // Verificar que el transporter este configurado
-    if (!transporter) {
-      console.log('Email transporter no configurado. Saltando envio de email de cambio de estado.');
-      return;
-    }
-    
-    console.log(`Preparando email de cambio de estado: ${previousStatus} -> ${newStatus}`);
-    
-    const statusLabels = {
-      pending: "Cargada",
-      pending_signature: "Pendiente de Firma",
-      pending_appointment: "Pendiente de Turno",
-      observed: "Observada",
-      appointed: "Turnada",
-      completed: "Instalada",
-      cancelled: "Cancelada"
-    };
-
-    const statusColors = {
-      pending: "#f59e0b",
-      pending_signature: "#f97316",
-      pending_appointment: "#a855f7",
-      observed: "#d97706",
-      appointed: "#3b82f6",
-      completed: "#10b981",
-      cancelled: "#ef4444"
-    };
-
-    const User = mongoose.model('User');
-
-    // Obtener el dueno de la venta (vendedor)
-    const seller = await User.findById(sale.sellerId);
-
-    if (!seller) {
-      console.log('No se encontro el vendedor dueno de la venta');
-      return;
-    }
-
-    if (!seller.email) {
-      console.log(`El vendedor ${seller.name} no tiene email configurado`);
-      return;
-    }
-
-    console.log(`Enviando email de cambio de estado a ${seller.email} (${seller.name})`);
-
-    await transporter.sendMail({
-      from: `"TusVentas" <${process.env.EMAIL_SMTP}>`,
-      to: seller.email,
-      subject: `Cambio de estado de venta: ${statusLabels[newStatus] || newStatus}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
-          
-          <div style="background-color: #1a1a2e; padding: 20px; text-align: center;">
-            <h1 style="color: #f59e0b; margin: 0;">TusVentas</h1>
-          </div>
-
-          <div style="padding: 30px; background-color: #f8f9fa;">
-            <h2 style="color: #1a1a2e;">Hola ${seller.name},</h2>
-            
-            <p style="font-size: 16px; color: #333;">
-              Una de tus ventas ha cambiado de estado:
-            </p>
-
-            <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${statusColors[newStatus] || '#6b7280'};">
-              <p style="margin: 0 0 10px 0;">
-                <strong>Estado anterior:</strong> 
-                <span style="background:${statusColors[previousStatus] || '#6b7280'}; color:white; padding:4px 12px; border-radius:4px; font-size: 14px;">
-                  ${statusLabels[previousStatus] || previousStatus}
-                </span>
-              </p>
-              <p style="margin: 0;">
-                <strong>Nuevo estado:</strong> 
-                <span style="background:${statusColors[newStatus] || '#6b7280'}; color:white; padding:4px 12px; border-radius:4px; font-size: 14px;">
-                  ${statusLabels[newStatus] || newStatus}
-                </span>
-              </p>
-            </div>
-
-            ${notes ? `
-            <div style="background-color: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0;">
-              <strong>Nota del cambio:</strong><br/>
-              ${notes}
-            </div>
-            ` : ''}
-
-            <h3 style="color: #1a1a2e; border-bottom: 2px solid #f59e0b; padding-bottom: 10px;">
-              Detalles de la venta
-            </h3>
-            
-            <table style="width: 100%; border-collapse: collapse;">
-              <tr>
-                <td style="padding: 8px 0; color: #666;"><strong>Cliente:</strong></td>
-                <td style="padding: 8px 0;">${sale.customerInfo.name}</td>
-              </tr>
-              <tr>
-                <td style="padding: 8px 0; color: #666;"><strong>Telefono:</strong></td>
-                <td style="padding: 8px 0;">${sale.customerInfo.phone}</td>
-              </tr>
-              <tr>
-                <td style="padding: 8px 0; color: #666;"><strong>Plan:</strong></td>
-                <td style="padding: 8px 0;">${sale.planName}</td>
-              </tr>
-              <tr>
-                <td style="padding: 8px 0; color: #666;"><strong>Direccion:</strong></td>
-                <td style="padding: 8px 0;">${sale.customerInfo.address.street} ${sale.customerInfo.address.number}, ${sale.customerInfo.address.city}</td>
-              </tr>
-            </table>
-
-            <div style="text-align: center; margin-top: 30px;">
-              <a href="https://tusventas.netlify.app"
-                style="display:inline-block; padding:12px 30px; background-color:#f59e0b; color:#1a1a2e; text-decoration:none; border-radius:6px; font-weight: bold;">
-                Ver en la plataforma
-              </a>
-            </div>
-          </div>
-
-          <div style="background-color: #1a1a2e; padding: 15px; text-align: center;">
-            <small style="color: #888;">Este mensaje fue enviado automaticamente por el sistema TusVentas.</small>
-          </div>
-        </div>
-      `
-    });
-
-    console.log(`Email de cambio de estado enviado exitosamente a ${seller.email}`);
-
-  } catch (error) {
-    console.error('Error enviando email de cambio de estado:', error.message);
-  }
-}
-
 // Create uploads directory if it doesn't exist
 const uploadsDir = path.join(__dirname, "uploads")
 if (!fs.existsSync(uploadsDir)) {
@@ -358,32 +52,12 @@ const requireAdmin = (req, res, next) => {
   next()
 }
 
-const requireAdminOrSupervisor = (req, res, next) => {
-  if (req.user.role !== "admin" && req.user.role !== "supervisor") {
-  return res.status(403).json({
-  success: false,
-  error: "Access denied. Admin or Supervisor role required.",
-  })
-  }
-  next()
-  }
-
-const requireAdminOrSupport = (req, res, next) => {
-  if (req.user.role !== "admin" && req.user.role !== "support") {
-  return res.status(403).json({
-  success: false,
-  error: "Access denied. Admin or Support role required.",
-  })
-  }
-  next()
-  }
-
 app.put("/api/admin/sales/:id", authenticateToken, requireAdmin, (req, res) => {
   console.log("Llegó al backend:", req.params.id, req.body)
   res.json({ ok: true })
 })
 // Lista de statuses válidos según tu enum
-const validStatuses = ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"]
+const validStatuses = ["pending", "completed", "cancelled", "pending_appointment", "appointed"]
 
 app.put("/sales/:id", authenticateToken, async (req, res) => {
   const { id } = req.params
@@ -459,7 +133,7 @@ const connectDB = async () => {
     const collections = await mongoose.connection.db.listCollections().toArray()
     console.log(`📋 Collections found: ${collections.map((c) => c.name).join(", ")}`)
 
-    // Eventos de conexi��n para MongoDB Atlas
+    // Eventos de conexión para MongoDB Atlas
     mongoose.connection.on("error", (err) => {
       console.error("❌ MongoDB Atlas connection error:", err)
     })
@@ -531,8 +205,8 @@ const userSchema = new mongoose.Schema(
     role: {
       type: String,
       enum: {
-        values: ["seller", "admin", "supervisor", "support"],
-        message: "Role must be seller, admin, supervisor or support",
+        values: ["seller", "admin"],
+        message: "Role must be either seller or admin",
       },
       default: "seller",
     },
@@ -542,10 +216,11 @@ const userSchema = new mongoose.Schema(
       min: [0, "Commission rate cannot be negative"],
       max: [1, "Commission rate cannot exceed 100%"],
     },
-    supervisorBaseCommission: {
+    // Comision fija por venta (si es null/undefined, usa la escala por tiers)
+    fixedCommissionPerSale: {
       type: Number,
-      default: 750000,
-      min: [0, "Supervisor base commission cannot be negative"],
+      default: null,
+      min: [0, "Fixed commission cannot be negative"],
     },
     isActive: {
       type: Boolean,
@@ -578,11 +253,6 @@ const saleSchema = new mongoose.Schema(
     sellerName: {
       type: String,
       required: [true, "Seller name is required"],
-    },
-    supervisorId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: false,
     },
     planId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -618,7 +288,7 @@ planPrice: {
     status: {
       type: String,
       enum: {
-        values: ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"],
+        values: ["pending", "completed", "cancelled", "pending_appointment", "appointed"],
         message: "Status must be one of the allowed values",
       },
       default: "pending",
@@ -628,7 +298,7 @@ planPrice: {
         status: {
           type: String,
           enum: {
-            values: ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"],
+            values: ["pending", "completed", "cancelled", "pending_appointment", "appointed"],
           },
         },
         changedBy: {
@@ -704,14 +374,6 @@ planPrice: {
           type: String,
           trim: true,
         },
-        entreCalles: {
-          type: String,
-          trim: true,
-        },
-        googleMapsLink: {
-          type: String,
-          trim: true,
-        },
       },
       birthDate: {
         type: String,
@@ -736,27 +398,6 @@ planPrice: {
       type: Number,
       min: [0, "Custom price must be 0 or greater"],
     },
-    // Campos para supervisor - costos adicionales
-    installationCost: {
-      type: Number,
-      default: 0,
-      min: [0, "Installation cost must be 0 or greater"],
-    },
-    adminCost: {
-      type: Number,
-      default: 0,
-      min: [0, "Admin cost must be 0 or greater"],
-    },
-    adCost: {
-      type: Number,
-      default: 0,
-      min: [0, "Ad cost must be 0 or greater"],
-    },
-    sellerCommissionPaid: {
-      type: Number,
-      default: 0,
-      min: [0, "Seller commission must be 0 or greater"],
-    },
     paymentInfo: {
       paymentMethodAbono: {
         type: String,
@@ -775,24 +416,36 @@ planPrice: {
         enum: ["transfer", "mercadopago"],
       },
     },
-    // Fechas de estados para el corte mensual
+    // Campos adicionales
     appointedDate: {
       type: Date,
-      default: null,
+    },
+    appointmentSlot: {
+      type: String,
+      enum: ["AM", "PM"],
     },
     completedDate: {
       type: Date,
-      default: null,
     },
-    installationCostDate: {
-      type: Date,
-      default: null,
-    },
-    // Numero de CTO para ventas activadas
     ctoNumber: {
       type: String,
       trim: true,
-      default: null,
+    },
+    contractNumber: {
+      type: String,
+      trim: true,
+    },
+    installationCost: {
+      type: Number,
+      default: 0,
+    },
+    adCost: {
+      type: Number,
+      default: 0,
+    },
+    sellerCommissionPaid: {
+      type: Number,
+      default: 0,
     },
   },
   {
@@ -1027,45 +680,6 @@ attachments: [
   },
 )
 
-// SupervisorAdCost Schema - Costos de anuncio mensuales por supervisor
-const supervisorAdCostSchema = new mongoose.Schema(
-  {
-    supervisorId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: [true, "Supervisor ID is required"],
-    },
-    amount: {
-      type: Number,
-      required: [true, "Amount is required"],
-      default: 0,
-    },
-    month: {
-      type: String,
-      required: [true, "Month is required"],
-      match: [/^\d{4}-\d{2}$/, "Month must be in YYYY-MM format"],
-    },
-    notes: {
-      type: String,
-      trim: true,
-    },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    },
-    updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-    },
-  },
-  {
-    timestamps: true,
-  }
-)
-
-// Index compuesto para asegurar un solo registro por supervisor/mes
-supervisorAdCostSchema.index({ supervisorId: 1, month: 1 }, { unique: true })
-
 // Models
 const User = mongoose.model("User", userSchema)
 const Sale = mongoose.model("Sale", saleSchema)
@@ -1073,7 +687,6 @@ const Plan = mongoose.model("Plan", planSchema)
 const Notification = mongoose.model("Notification", notificationSchema)
 const ChatRoom = mongoose.model("ChatRoom", chatRoomSchema)
 const Message = mongoose.model("Message", messageSchema)
-const SupervisorAdCost = mongoose.model("SupervisorAdCost", supervisorAdCostSchema)
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage()
@@ -1201,12 +814,13 @@ app.post("/api/auth/register", async (req, res) => {
 
     await user.save()
 
-    const token = jwt.sign(
-      { userId: user._id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
-      { expiresIn: process.env.JWT_EXPIRES_IN || "1h" },
-    )
-    
+    await enviarMensajeTelegram(`📥 <b>Nuevo registro</b>\n👤 Nombre: ${name}\n📧 Email: ${email}\n📞 Teléfono: ${phone}`);
+
+const token = jwt.sign(
+  { userId: user._id, email: user.email, role: user.role },
+  process.env.JWT_SECRET,
+  { expiresIn: process.env.JWT_EXPIRES_IN || "1h" },
+)
     res.status(201).json({
       success: true,
       message: "User created successfully",
@@ -1221,16 +835,6 @@ app.post("/api/auth/register", async (req, res) => {
         commissionRate: user.commissionRate,
       },
     })
-
-    // Enviar notificacion de forma asincrona
-    setImmediate(async () => {
-      try {
-        await enviarMensajeTelegram(`<b>Nuevo registro</b>\nNombre: ${name}\nEmail: ${email}\nTelefono: ${phone}`);
-      } catch (e) {
-        console.error('Error enviando Telegram:', e.message);
-      }
-    });
-
   } catch (error) {
     handleError(res, error, "Registration failed")
   }
@@ -1319,50 +923,18 @@ app.get("/api/users/profile", authenticateToken, async (req, res) => {
 
 app.put("/api/users/profile", authenticateToken, async (req, res) => {
   try {
-    const { name, phone, location, currentPassword, newPassword } = req.body
+    const { name, phone, location } = req.body
 
-    const user = await User.findById(req.user.userId)
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: "User not found",
-      })
-    }
-
-    // Si se quiere cambiar contraseña
-    if (currentPassword && newPassword) {
-      const isValidPassword = await bcrypt.compare(currentPassword, user.password)
-      if (!isValidPassword) {
-        return res.status(400).json({
-          success: false,
-          error: "La contraseña actual es incorrecta",
-        })
-      }
-
-      if (newPassword.length < 6) {
-        return res.status(400).json({
-          success: false,
-          error: "La nueva contraseña debe tener al menos 6 caracteres",
-        })
-      }
-
-      const hashedPassword = await bcrypt.hash(newPassword, 12)
-      user.password = hashedPassword
-    }
-
-    // Actualizar otros campos si se proporcionan
-    if (name) user.name = name
-    if (phone) user.phone = phone
-    if (location) user.location = location
-
-    await user.save()
-
-    const updatedUser = await User.findById(req.user.userId).select("-password")
+    const user = await User.findByIdAndUpdate(
+      req.user.userId,
+      { name, phone, location },
+      { new: true, runValidators: true },
+    ).select("-password")
 
     res.json({
       success: true,
       message: "Profile updated successfully",
-      user: updatedUser,
+      user,
     })
   } catch (error) {
     handleError(res, error, "Failed to update profile")
@@ -1374,7 +946,7 @@ app.post("/api/sales", authenticateToken, async (req, res) => {
   try {
     console.log("Creating sale - User:", req.user.userId)
 
-    const { planId, description, sellerId: assignedSellerId } = req.body
+    const { planId, description } = req.body
     console.log('REQ BODY:', req.body)
 
     let customerInfo = req.body.customerInfo
@@ -1430,40 +1002,20 @@ console.log('CUSTOMER:', req.body.customer);
       })
     }
 
-    // Obtener el usuario que crea la venta
-    const currentUser = await User.findById(req.user.userId)
-    if (!currentUser) {
+    const user = await User.findById(req.user.userId)
+    if (!user) {
       return res.status(404).json({
         success: false,
         error: "User not found",
       })
     }
 
-    // Si es admin o supervisor y asigna a otro vendedor
-    let targetSeller = currentUser
-    console.log("[v0] assignedSellerId from request:", assignedSellerId)
-    console.log("[v0] currentUser role:", currentUser.role)
-    
-    if (assignedSellerId && (currentUser.role === "admin" || currentUser.role === "supervisor" || currentUser.role === "support")) {
-      targetSeller = await User.findById(assignedSellerId)
-      console.log("[v0] Found targetSeller:", targetSeller ? targetSeller._id : "NOT FOUND")
-      if (!targetSeller) {
-        return res.status(404).json({
-          success: false,
-          error: "Assigned seller not found",
-        })
-      }
-    }
-    
-    console.log("[v0] Final targetSeller._id:", targetSeller._id)
-    console.log("[v0] Final targetSeller.name:", targetSeller.name)
-
-    const commission = plan.price * targetSeller.commissionRate
+    const commission = plan.price * user.commissionRate
 
     const statusHistory = [
       {
         status: "pending",
-        changedBy: currentUser._id,
+        changedBy: user._id,
         changedAt: new Date(),
         notes: "Venta registrada",
       },
@@ -1471,18 +1023,14 @@ console.log('CUSTOMER:', req.body.customer);
 
     const { planDetail, customPrice, paymentInfo } = req.body
 
-    // Si el supervisor crea la venta, guardar su ID para poder seguir viendola
-    const supervisorId = currentUser.role === "supervisor" ? currentUser._id : undefined
-
     const sale = new Sale({
-      sellerId: targetSeller._id,
-      sellerName: targetSeller.name,
-      supervisorId: supervisorId,
+      sellerId: user._id,
+      sellerName: user.name,
       planId: plan._id,
       planName: plan.name,
       planPrice: plan.price,
       commission,
-      commissionRate: targetSeller.commissionRate,
+      commissionRate: user.commissionRate,
       description,
       customerInfo,
       statusHistory,
@@ -1495,52 +1043,79 @@ console.log('CUSTOMER:', req.body.customer);
         // Solo sumar al total si la venta no está cancelada
 
     console.log("Sale created successfully:", sale._id)
+await enviarMensajeTelegram(
+  `🛒 Nueva venta:\n💰 Monto: $${plan.price}\n📦 Producto: ${plan.name}\n👤 Vendedor: ${user.name}`
+)
 
-    // Si la venta fue asignada a otro vendedor (no al creador), notificarle
-    if (assignedSellerId && currentUser._id.toString() !== targetSeller._id.toString()) {
-      const assignmentNotification = new Notification({
-        title: "Nueva venta asignada",
-        message: `Se te ha asignado una nueva venta del plan ${plan.name} para el cliente ${customerInfo.name}. Revisa tu panel de ventas para mas detalles.`,
-        type: "info",
-        priority: "high",
-        recipients: [targetSeller._id],
-        createdBy: currentUser._id,
-      });
-      await assignmentNotification.save();
+    // Enviar email a todos los admins
+    try {
+      const admins = await User.find({ role: "admin", isActive: true }).select("email name")
+      if (admins.length > 0) {
+        const transporter = nodemailer.createTransport({
+          service: 'gmail',
+          auth: {
+            user: process.env.EMAIL_SMTP,
+            pass: process.env.PASSWORD_SMTP
+          }
+        })
+
+        for (const admin of admins) {
+          await transporter.sendMail({
+            from: '"TusVentas" <tucorreo@gmail.com>',
+            to: admin.email,
+            subject: `🛒 Nueva venta registrada - ${plan.name}`,
+            html: `
+              <div style="font-family: sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+                <img src="cid:logoTusVentas" style="max-width: 100%; margin-bottom: 20px;" alt="TusVentas" />
+                <h2 style="color: #1e3a5f;">Nueva Venta Registrada</h2>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                  <p><strong>📦 Plan:</strong> ${plan.name}</p>
+                  <p><strong>💰 Monto:</strong> $${plan.price.toLocaleString()}</p>
+                  <p><strong>👤 Vendedor:</strong> ${user.name}</p>
+                  <p><strong>📧 Email vendedor:</strong> ${user.email}</p>
+                  <hr style="border: none; border-top: 1px solid #ddd; margin: 15px 0;" />
+                  <h3 style="color: #1e3a5f;">Datos del Cliente</h3>
+                  <p><strong>Nombre:</strong> ${customerInfo.name}</p>
+                  <p><strong>Email:</strong> ${customerInfo.email}</p>
+                  <p><strong>Telefono:</strong> ${customerInfo.phone}</p>
+                  <p><strong>DNI:</strong> ${customerInfo.dni}</p>
+                  <p><strong>Direccion:</strong> ${customerInfo.address.street} ${customerInfo.address.number}, ${customerInfo.address.city}, ${customerInfo.address.province}</p>
+                </div>
+                <p><a href="https://tusventas.netlify.app/admin/sales" style="display:inline-block; padding:12px 24px; background-color:#d4af37; color:#1e3a5f; text-decoration:none; border-radius:5px; font-weight: bold;">Ver en el Panel</a></p>
+                <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
+                <small style="color: #666;">Este mensaje fue enviado automaticamente por el sistema TusVentas.</small>
+              </div>
+            `,
+            attachments: [
+              {
+                filename: 'bannertusventas.png',
+                path: './bannertusventas.png',
+                cid: 'logoTusVentas'
+              }
+            ]
+          })
+          console.log(`Email de nueva venta enviado a admin: ${admin.email}`)
+        }
+      }
+    } catch (emailError) {
+      console.error("Error enviando email a admins:", emailError.message)
+      // No falla la venta si el email falla
     }
 
     if (sale.status !== "cancelled") {
-      await User.findByIdAndUpdate(targetSeller._id, {
-        $inc: {
-          totalSales: plan.price,
-          totalCommissions: commission,
-        },
-      })
+    await User.findByIdAndUpdate(user._id, {
+      $inc: {
+        totalSales: plan.price,
+        totalCommissions: commission,
+      },
+    })
     }
 
-    // Responder inmediatamente con exito
     res.status(201).json({
       success: true,
       message: "Sale created successfully",
       sale,
     })
-
-    // Enviar notificaciones de forma asincrona (no bloquean la respuesta)
-    setImmediate(async () => {
-      try {
-        await enviarMensajeTelegram(
-          `Nueva venta:\nMonto: $${plan.price}\nProducto: ${plan.name}\nVendedor: ${targetSeller.name}`
-        );
-      } catch (e) {
-        console.error('Error enviando Telegram:', e.message);
-      }
-
-      try {
-        await enviarEmailNuevaVenta(sale, targetSeller, plan);
-      } catch (e) {
-        console.error('Error enviando email:', e.message);
-      }
-    });
 
   } catch (error) {
     console.error("Error creating sale:", error)
@@ -1555,27 +1130,11 @@ console.log('CUSTOMER:', req.body.customer);
 
 app.get("/api/sales", authenticateToken, async (req, res) => {
   try {
-    console.log("Fetching sales for user:", req.user.userId, "role:", req.user.role)
+    console.log("Fetching sales for user:", req.user.userId)
 
-    const { page = 1, limit = 100, status, startDate, endDate } = req.query
+    const { page = 1, limit = 10, status, startDate, endDate } = req.query
 
-    // Convertir userId a ObjectId para comparacion correcta
-    const userObjectId = new mongoose.Types.ObjectId(req.user.userId)
-    
-    let query = {}
-    
-    if (req.user.role === "supervisor") {
-      // Supervisor ve: sus propias ventas + ventas donde es supervisorId
-      query = {
-        $or: [
-          { sellerId: userObjectId },
-          { supervisorId: userObjectId }
-        ]
-      }
-    } else {
-      // Vendedor solo ve sus propias ventas
-      query = { sellerId: userObjectId }
-    }
+    const query = { sellerId: req.user.userId }
 
     if (status) query.status = status
     if (startDate || endDate) {
@@ -1584,7 +1143,7 @@ app.get("/api/sales", authenticateToken, async (req, res) => {
       if (endDate) query.createdAt.$lte = new Date(endDate)
     }
 
-    console.log("Sales query:", JSON.stringify(query))
+    console.log("Sales query:", query)
 
     const sales = await Sale.find(query)
       .populate("planId", "name description")
@@ -1701,153 +1260,8 @@ app.get("/api/dashboard/stats", authenticateToken, async (req, res) => {
   }
 })
 
-// Support Routes - Gestion de ventas sin acceso a comisiones
-app.get("/api/support/sales", authenticateToken, requireAdminOrSupport, async (req, res) => {
-  try {
-    const { page = 1, limit = 20, status, sellerId, startDate, endDate } = req.query
-    
-    const query = {}
-    if (status) query.status = status
-    if (sellerId) query.sellerId = sellerId
-    if (startDate || endDate) {
-      query.createdAt = {}
-      if (startDate) query.createdAt.$gte = new Date(startDate)
-      if (endDate) query.createdAt.$lte = new Date(endDate)
-    }
-
-    const sales = await Sale.find(query)
-      .populate("sellerId", "name email")
-      .populate("supervisorId", "name email")
-      .sort({ createdAt: -1 })
-      .limit(Number(limit))
-      .skip((Number(page) - 1) * Number(limit))
-
-    const total = await Sale.countDocuments(query)
-
-    res.json({
-      success: true,
-      sales,
-      pagination: {
-        total,
-        page: Number(page),
-        limit: Number(limit),
-        pages: Math.ceil(total / Number(limit)),
-        hasNext: page * limit < total,
-        hasPrev: page > 1,
-      },
-    })
-  } catch (error) {
-    handleError(res, error, "Failed to fetch sales")
-  }
-})
-
-// Support - Estadisticas basicas (sin datos financieros)
-app.get("/api/support/stats", authenticateToken, requireAdminOrSupport, async (req, res) => {
-  try {
-    const totalSales = await Sale.countDocuments()
-    const pendingSales = await Sale.countDocuments({ status: "pending" })
-    const pendingAppointment = await Sale.countDocuments({ status: "pending_appointment" })
-    const appointedSales = await Sale.countDocuments({ status: "appointed" })
-    const completedSales = await Sale.countDocuments({ status: "completed" })
-    const cancelledSales = await Sale.countDocuments({ status: "cancelled" })
-    const totalSellers = await User.countDocuments({ role: "seller", isActive: true })
-    const totalSupervisors = await User.countDocuments({ role: "supervisor", isActive: true })
-
-    res.json({
-      success: true,
-      stats: {
-        totalSales,
-        pendingSales,
-        pendingAppointment,
-        appointedSales,
-        completedSales,
-        cancelledSales,
-        totalSellers,
-        totalSupervisors,
-      },
-    })
-  } catch (error) {
-    handleError(error, res, "Failed to fetch support stats")
-  }
-})
-
-// Support - Actualizar estado de venta
-app.put("/api/support/sales/:id/status", authenticateToken, requireAdminOrSupport, async (req, res) => {
-  try {
-    const { status, notes, statusDate, ctoNumber } = req.body
-    const { id } = req.params
-
-    if (!status) {
-      return res.status(400).json({ success: false, error: "Status is required" })
-    }
-
-    const validStatuses = ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"]
-    if (!validStatuses.includes(status)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid status value",
-        validValues: validStatuses,
-      })
-    }
-
-    const sale = await Sale.findById(id)
-    if (!sale) {
-      return res.status(404).json({ success: false, error: "Sale not found" })
-    }
-
-    const previousStatus = sale.status
-    const effectiveDate = statusDate ? new Date(statusDate) : new Date()
-
-    sale.statusHistory.push({
-      status,
-      changedBy: req.user.userId,
-      changedAt: effectiveDate,
-      notes: notes || "",
-    })
-
-    sale.status = status
-    
-    if (status === "appointed") {
-      sale.appointedDate = effectiveDate
-    } else if (status === "completed") {
-      sale.completedDate = effectiveDate
-      // Guardar numero de CTO si se proporciona
-      if (ctoNumber) {
-        sale.ctoNumber = ctoNumber
-      }
-    }
-
-    await sale.save()
-
-    res.json({
-      success: true,
-      message: "Sale status updated successfully",
-      sale,
-    })
-  } catch (error) {
-    handleError(res, error, "Failed to update sale status")
-  }
-})
-
-// Support - Obtener vendedores (solo nombres, sin comisiones)
-app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async (req, res) => {
-  try {
-    const sellers = await User.find({ 
-      role: { $in: ["seller", "supervisor"] },
-      isActive: true 
-    }).select("_id name email role")
-
-    res.json({
-      success: true,
-      sellers,
-    })
-  } catch (error) {
-    handleError(res, error, "Failed to fetch sellers")
-  }
-})
-
 // Admin Routes
-  app.get("/api/admin/stats", authenticateToken, requireAdminOrSupport, async (req, res) => {
+app.get("/api/admin/stats", authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log("Fetching admin stats")
 
@@ -1933,7 +1347,7 @@ app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async 
   }
 })
 
-app.get("/api/admin/sales", authenticateToken, requireAdminOrSupport, async (req, res) => {
+app.get("/api/admin/sales", authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log("Fetching admin sales")
 
@@ -1980,16 +1394,16 @@ app.get("/api/admin/sales", authenticateToken, requireAdminOrSupport, async (req
 })
 
 
-app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport, async (req, res) => {
+app.put("/api/admin/sales/:id/status", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { status, notes, statusDate, ctoNumber } = req.body;
+    const { status, notes, statusDate, ctoNumber, appointmentSlot } = req.body;
     const { id } = req.params;
 
     if (!status) {
       return res.status(400).json({ success: false, error: "Status is required" });
     }
 
-    const validStatuses = ["pending", "pending_signature", "pending_appointment", "observed", "appointed", "completed", "cancelled"];
+    const validStatuses = ["pending", "pending_signature", "pending_appointment", "observed", "completed", "cancelled", "appointed"];
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
         success: false,
@@ -2004,25 +1418,27 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport,
     }
 
     const previousStatus = sale.status;
-    
-    // Determinar la fecha a usar (la enviada o la actual)
-    const effectiveDate = statusDate ? new Date(statusDate) : new Date();
 
     sale.statusHistory.push({
       status,
       changedBy: req.user.userId,
-      changedAt: effectiveDate,
+      changedAt: new Date(),
       notes: notes || "",
     });
 
     sale.status = status;
     
-    // Guardar fechas especificas segun el estado
-    if (status === "appointed") {
-      sale.appointedDate = effectiveDate;
-    } else if (status === "completed") {
-      sale.completedDate = effectiveDate;
-      // Guardar numero de CTO si se proporciona
+    // Guardar fecha de turno cuando el estado es "appointed"
+    if (status === "appointed" && statusDate) {
+      sale.appointedDate = new Date(statusDate);
+      if (appointmentSlot) {
+        sale.appointmentSlot = appointmentSlot;
+      }
+    }
+    
+    // Guardar fecha de activacion y CTO cuando el estado es "completed"
+    if (status === "completed" && statusDate) {
+      sale.completedDate = new Date(statusDate);
       if (ctoNumber) {
         sale.ctoNumber = ctoNumber;
       }
@@ -2076,349 +1492,41 @@ if (previousStatus === "cancelled" && status !== "cancelled") {
 
     await sale.save();
 
-    // Crear notificacion para el vendedor sobre el cambio de estado
-    const statusLabels = {
-  pending: "Cargada",
-  pending_signature: "Pendiente de Firma",
-  pending_appointment: "Pendiente de Turno",
-  observed: "Observada",
-  appointed: "Turnada",
-  completed: "Instalada",
-  cancelled: "Cancelada"
-  };
-
-    const sellerNotification = new Notification({
-      title: "Estado de venta actualizado",
-      message: `Tu venta de ${sale.planName} para ${sale.customerInfo.name} cambio a: ${statusLabels[status] || status}${notes ? `. Nota: ${notes}` : ""}`,
-      type: "info",
-      priority: status === "cancelled" ? "high" : "medium",
-      recipients: [sale.sellerId],
-      createdBy: req.user.userId,
-    });
-    await sellerNotification.save();
-
-    // Notificar a todos los admins y supervisores sobre el cambio
-    const adminsAndSupervisors = await User.find({ 
-      role: { $in: ["admin", "supervisor"] },
-      isActive: true,
-      _id: { $ne: req.user.userId } // Excluir al que hizo el cambio
-    });
-
-    if (adminsAndSupervisors.length > 0) {
-      const adminNotification = new Notification({
-        title: "Cambio de estado en venta",
-        message: `Venta de ${sale.sellerName} (${sale.planName}) cambio de ${statusLabels[previousStatus] || previousStatus} a ${statusLabels[status] || status}`,
-        type: "info",
-        priority: "low",
-        recipients: adminsAndSupervisors.map(u => u._id),
-        createdBy: req.user.userId,
-      });
-      await adminNotification.save();
-    }
-
-    // Responder inmediatamente con exito
     res.json({
       success: true,
       message: "Sale status updated successfully",
       sale,
     });
-
-    // Enviar notificaciones de forma asincrona (no bloquean la respuesta)
-    setImmediate(async () => {
-      try {
-        await enviarMensajeTelegram(
-          `<b>Estado actualizado</b>\n` +
-          `${statusLabels[previousStatus] || previousStatus} -> ${statusLabels[status] || status}\n` +
-          `Cliente: ${sale.customerInfo.name}\n` +
-          `Plan: ${sale.planName}\n` +
-          `Vendedor: ${sale.sellerName}`
-        );
-      } catch (e) {
-        console.error('Error enviando Telegram:', e.message);
-      }
-
-      try {
-        await enviarEmailCambioEstado(sale, previousStatus, status, notes);
-      } catch (e) {
-        console.error('Error enviando email:', e.message);
-      }
-    });
-
   } catch (error) {
     handleError(res, error, "Failed to update sale status");
   }
 });
 
-// Actualizar costos de una venta (instalacion, admin, anuncio, comision vendedor)
-app.put("/api/admin/sales/:id/costs", authenticateToken, async (req, res) => {
+// Actualizar numero de contrato de una venta
+app.put("/api/admin/sales/:id/contract", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { installationCost, adminCost, adCost, sellerCommissionPaid } = req.body;
     const { id } = req.params;
-
-    // Solo admin, supervisor y support pueden actualizar costos
-    const currentUser = await User.findById(req.user.userId);
-    if (!currentUser || (currentUser.role !== "admin" && currentUser.role !== "supervisor" && currentUser.role !== "support")) {
-      return res.status(403).json({
-        success: false,
-        error: "Not authorized to update sale costs",
-      });
-    }
+    const { contractNumber } = req.body;
 
     const sale = await Sale.findById(id);
     if (!sale) {
       return res.status(404).json({ success: false, error: "Sale not found" });
     }
 
-  // Actualizar los costos
-  // Si se coloca costo de instalacion por primera vez, guardar la fecha
-  if (installationCost !== undefined) {
-    const newInstallationCost = Number(installationCost);
-    if (newInstallationCost > 0 && (!sale.installationCost || sale.installationCost === 0)) {
-      sale.installationCostDate = new Date();
-    }
-    sale.installationCost = newInstallationCost;
-  }
-  if (adminCost !== undefined) sale.adminCost = Number(adminCost);
-  if (adCost !== undefined) sale.adCost = Number(adCost);
-  if (sellerCommissionPaid !== undefined) sale.sellerCommissionPaid = Number(sellerCommissionPaid);
-  
-  await sale.save();
-
-    res.json({
-      success: true,
-      message: "Sale costs updated successfully",
-      sale,
-    });
-  } catch (error) {
-    handleError(res, error, "Failed to update sale costs");
-  }
-});
-
-// Asignar/reasignar vendedor a una venta
-app.put("/api/admin/sales/:id/assign", authenticateToken, requireAdminOrSupport, async (req, res) => {
-  try {
-    const { sellerId } = req.body;
-    const { id } = req.params;
-
-    if (!sellerId) {
-      return res.status(400).json({
-        success: false,
-        error: "Seller ID is required",
-      });
-    }
-
-    const sale = await Sale.findById(id);
-    if (!sale) {
-      return res.status(404).json({ success: false, error: "Sale not found" });
-    }
-
-    const newSeller = await User.findById(sellerId);
-    if (!newSeller || !newSeller.isActive) {
-      return res.status(404).json({
-        success: false,
-        error: "Seller not found or inactive",
-      });
-    }
-
-    const oldSellerId = sale.sellerId;
-    const oldSellerName = sale.sellerName;
-
-    // Actualizar el vendedor
-    sale.sellerId = newSeller._id;
-    sale.sellerName = newSeller.name;
-
-    // Agregar al historial de estados
-    sale.statusHistory.push({
-      status: sale.status,
-      changedBy: req.user.userId,
-      changedAt: new Date(),
-      notes: `Venta reasignada de ${oldSellerName} a ${newSeller.name}`,
-    });
-
+    sale.contractNumber = contractNumber || "";
     await sale.save();
 
-    // Si se cambio de vendedor, actualizar contadores
-    if (oldSellerId.toString() !== newSeller._id.toString() && sale.status !== "cancelled") {
-      // Quitar del vendedor anterior
-      await User.findByIdAndUpdate(oldSellerId, {
-        $inc: {
-          totalSales: -sale.planPrice,
-          totalCommissions: -sale.commission,
-        },
-      });
-
-      // Agregar al nuevo vendedor
-      await User.findByIdAndUpdate(newSeller._id, {
-        $inc: {
-          totalSales: sale.planPrice,
-          totalCommissions: sale.commission,
-        },
-      });
-
-      // Notificar al nuevo vendedor
-      const assignmentNotification = new Notification({
-        title: "Nueva venta asignada",
-        message: `Se te ha asignado una venta del plan ${sale.planName} para el cliente ${sale.customerInfo.name}.`,
-        type: "info",
-        priority: "high",
-        recipients: [newSeller._id],
-        createdBy: req.user.userId,
-      });
-      await assignmentNotification.save();
-    }
-
     res.json({
       success: true,
-      message: "Sale assigned successfully",
+      message: "Contract number updated successfully",
       sale,
     });
   } catch (error) {
-    handleError(res, error, "Failed to assign sale");
+    handleError(res, error, "Failed to update contract number");
   }
 });
 
-// Supervisor puede asignar ventas propias a vendedores
-app.put("/api/sales/:id/assign", authenticateToken, async (req, res) => {
-  try {
-    const { sellerId } = req.body;
-    const { id } = req.params;
-    const userId = req.user.userId;
-
-    // Solo admins y supervisores pueden asignar
-    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
-      return res.status(403).json({
-        success: false,
-        error: "No tienes permisos para asignar ventas",
-      });
-    }
-
-    if (!sellerId) {
-      return res.status(400).json({
-        success: false,
-        error: "Seller ID is required",
-      });
-    }
-
-    const sale = await Sale.findById(id);
-    if (!sale) {
-      return res.status(404).json({ success: false, error: "Sale not found" });
-    }
-
-    // Si es supervisor, solo puede asignar sus propias ventas
-    if (req.user.role === "supervisor" && sale.sellerId.toString() !== userId) {
-      return res.status(403).json({
-        success: false,
-        error: "Solo puedes asignar tus propias ventas",
-      });
-    }
-
-    const newSeller = await User.findById(sellerId);
-    if (!newSeller || !newSeller.isActive) {
-      return res.status(404).json({
-        success: false,
-        error: "Seller not found or inactive",
-      });
-    }
-
-    // Solo puede asignar a vendedores
-    if (newSeller.role !== "seller") {
-      return res.status(400).json({
-        success: false,
-        error: "Solo puedes asignar a vendedores",
-      });
-    }
-
-    const oldSellerId = sale.sellerId;
-    const oldSellerName = sale.sellerName;
-
-    // Actualizar el vendedor (mantiene el supervisor como creador original)
-    sale.sellerId = newSeller._id;
-    sale.sellerName = newSeller.name;
-    
-    // Guardar quien es el supervisor que creo la venta (si no existe ya)
-    if (!sale.supervisorId && req.user.role === "supervisor") {
-      sale.supervisorId = userId;
-    }
-
-    // Agregar al historial de estados
-    sale.statusHistory.push({
-      status: sale.status,
-      changedBy: userId,
-      changedAt: new Date(),
-      notes: `Venta asignada de ${oldSellerName} a ${newSeller.name}`,
-    });
-
-    await sale.save();
-
-    // Si se cambio de vendedor, actualizar contadores
-    if (oldSellerId.toString() !== newSeller._id.toString() && sale.status !== "cancelled") {
-      // Quitar del vendedor anterior (si no es el supervisor)
-      const oldSeller = await User.findById(oldSellerId);
-      if (oldSeller && oldSeller.role === "seller") {
-        await User.findByIdAndUpdate(oldSellerId, {
-          $inc: {
-            totalSales: -sale.planPrice,
-            totalCommissions: -sale.commission,
-          },
-        });
-      }
-
-      // Agregar al nuevo vendedor
-      await User.findByIdAndUpdate(newSeller._id, {
-        $inc: {
-          totalSales: sale.planPrice,
-          totalCommissions: sale.commission,
-        },
-      });
-
-      // Notificar al nuevo vendedor
-      const assignmentNotification = new Notification({
-        title: "Nueva venta asignada",
-        message: `Se te ha asignado una venta del plan ${sale.planName} para el cliente ${sale.customerInfo.name}.`,
-        type: "info",
-        priority: "high",
-        recipients: [newSeller._id],
-        createdBy: userId,
-      });
-      await assignmentNotification.save();
-    }
-
-    res.json({
-      success: true,
-      message: "Sale assigned successfully",
-      sale,
-    });
-  } catch (error) {
-    handleError(error, res, "Failed to assign sale");
-  }
-});
-
-// Endpoint para supervisores y admins: obtener lista de vendedores activos
-app.get("/api/sellers", authenticateToken, async (req, res) => {
-  try {
-    // Solo admins y supervisores pueden ver la lista de vendedores
-    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
-      return res.status(403).json({
-        success: false,
-        error: "No tienes permisos para ver la lista de vendedores",
-      });
-    }
-
-    const sellers = await User.find({ 
-      role: "seller", 
-      isActive: true 
-    }).select("-password");
-
-    res.json({
-      success: true,
-      sellers,
-    });
-  } catch (error) {
-    handleError(res, error, "Failed to fetch sellers");
-  }
-});
-
-app.get("/api/admin/plans", authenticateToken, requireAdminOrSupport, async (req, res) => {
+app.get("/api/admin/plans", authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log("Fetching admin plans")
 
@@ -2529,7 +1637,7 @@ app.delete("/api/admin/plans/:id", authenticateToken, requireAdmin, async (req, 
   }
 })
 
-app.get("/api/admin/users", authenticateToken, requireAdminOrSupport, async (req, res) => {
+app.get("/api/admin/users", authenticateToken, requireAdmin, async (req, res) => {
   try {
     console.log("Fetching admin users")
 
@@ -2627,19 +1735,24 @@ app.post("/api/admin/users", authenticateToken, requireAdmin, async (req, res) =
 
 app.put("/api/admin/users/:id", authenticateToken, requireAdmin, async (req, res) => {
   try {
-    const { name, email, phone, location, role, commissionRate, isActive, password } = req.body
-
+    const { name, email, phone, location, role, commissionRate, isActive, password, fixedCommissionPerSale } = req.body
+    
     const updateData = {
       name,
       phone,
       location,
       isActive,
     }
-
+    
     if (email) updateData.email = email
     if (role) updateData.role = role
     if (commissionRate !== undefined) updateData.commissionRate = Number(commissionRate)
-
+    
+    // Comision fija por venta (null = usa escala por tiers)
+    if (fixedCommissionPerSale !== undefined) {
+      updateData.fixedCommissionPerSale = fixedCommissionPerSale === null ? null : Number(fixedCommissionPerSale)
+    }
+    
     // Hash password if provided
     if (password && password.length >= 6) {
       updateData.password = await bcrypt.hash(password, 12)
@@ -3395,166 +2508,6 @@ app.put("/api/chat/:chatRoomId/read", authenticateToken, async (req, res) => {
     handleError(res, error, "Failed to mark messages as read")
   }
 })
-
-// ==================== SUPERVISOR AD COSTS ENDPOINTS ====================
-
-// Obtener todos los costos de anuncio (solo admin)
-app.get("/api/admin/ad-costs", authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: "Solo los administradores pueden ver todos los costos de anuncio",
-      });
-    }
-
-    const { month, supervisorId } = req.query;
-    const filter = {};
-    
-    if (month) filter.month = month;
-    if (supervisorId) filter.supervisorId = supervisorId;
-
-    const adCosts = await SupervisorAdCost.find(filter)
-      .populate("supervisorId", "name email")
-      .populate("createdBy", "name")
-      .populate("updatedBy", "name")
-      .sort({ month: -1, createdAt: -1 });
-
-    res.json({
-      success: true,
-      adCosts,
-    });
-  } catch (error) {
-    handleError(res, error, "Failed to fetch ad costs");
-  }
-});
-
-// Crear o actualizar costo de anuncio (solo admin)
-app.post("/api/admin/ad-costs", authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: "Solo los administradores pueden crear costos de anuncio",
-      });
-    }
-
-    const { supervisorId, amount, month, notes } = req.body;
-
-    if (!supervisorId || amount === undefined || !month) {
-      return res.status(400).json({
-        success: false,
-        error: "Se requiere supervisorId, amount y month",
-      });
-    }
-
-    // Verificar que el supervisor existe y es supervisor
-    const supervisor = await User.findById(supervisorId);
-    if (!supervisor || supervisor.role !== "supervisor") {
-      return res.status(404).json({
-        success: false,
-        error: "Supervisor no encontrado o no es un supervisor",
-      });
-    }
-
-    // Buscar si ya existe un registro para este supervisor/mes
-    let adCost = await SupervisorAdCost.findOne({ supervisorId, month });
-
-    if (adCost) {
-      // Actualizar existente
-      adCost.amount = amount;
-      adCost.notes = notes || adCost.notes;
-      adCost.updatedBy = req.user.userId;
-      await adCost.save();
-    } else {
-      // Crear nuevo
-      adCost = new SupervisorAdCost({
-        supervisorId,
-        amount,
-        month,
-        notes,
-        createdBy: req.user.userId,
-        updatedBy: req.user.userId,
-      });
-      await adCost.save();
-    }
-
-    // Obtener datos populados
-    const populatedAdCost = await SupervisorAdCost.findById(adCost._id)
-      .populate("supervisorId", "name email")
-      .populate("createdBy", "name")
-      .populate("updatedBy", "name");
-
-    res.json({
-      success: true,
-      message: adCost.isNew ? "Costo de anuncio creado" : "Costo de anuncio actualizado",
-      adCost: populatedAdCost,
-    });
-  } catch (error) {
-    if (error.code === 11000) {
-      return res.status(400).json({
-        success: false,
-        error: "Ya existe un costo de anuncio para este supervisor y mes",
-      });
-    }
-    handleError(res, error, "Failed to create/update ad cost");
-  }
-});
-
-// Eliminar costo de anuncio (solo admin)
-app.delete("/api/admin/ad-costs/:id", authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== "admin") {
-      return res.status(403).json({
-        success: false,
-        error: "Solo los administradores pueden eliminar costos de anuncio",
-      });
-    }
-
-    const { id } = req.params;
-    const adCost = await SupervisorAdCost.findByIdAndDelete(id);
-
-    if (!adCost) {
-      return res.status(404).json({
-        success: false,
-        error: "Costo de anuncio no encontrado",
-      });
-    }
-
-    res.json({
-      success: true,
-      message: "Costo de anuncio eliminado",
-    });
-  } catch (error) {
-    handleError(res, error, "Failed to delete ad cost");
-  }
-});
-
-// Obtener costos de anuncio de un supervisor (para el propio supervisor)
-app.get("/api/ad-costs/my", authenticateToken, async (req, res) => {
-  try {
-    if (req.user.role !== "supervisor") {
-      return res.status(403).json({
-        success: false,
-        error: "Solo los supervisores pueden ver sus costos de anuncio",
-      });
-    }
-
-    const { month } = req.query;
-    const filter = { supervisorId: req.user.userId };
-    if (month) filter.month = month;
-
-    const adCosts = await SupervisorAdCost.find(filter)
-      .sort({ month: -1 });
-
-    res.json({
-      success: true,
-      adCosts,
-    });
-  } catch (error) {
-    handleError(res, error, "Failed to fetch my ad costs");
-  }
-});
 
 // Start the server
 app.listen(PORT, () => {
