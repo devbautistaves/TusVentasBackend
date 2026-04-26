@@ -2375,11 +2375,12 @@ app.put("/api/sales/:id/assign", authenticateToken, async (req, res) => {
       });
     }
 
-    // Solo puede asignar a vendedores
-    if (newSeller.role !== "seller") {
+    // Puede asignar a vendedores, supervisores o support
+    const allowedRoles = ["seller", "supervisor", "support"];
+    if (!allowedRoles.includes(newSeller.role)) {
       return res.status(400).json({
         success: false,
-        error: "Solo puedes asignar a vendedores",
+        error: "Solo puedes asignar a vendedores, supervisores o soporte",
       });
     }
 
