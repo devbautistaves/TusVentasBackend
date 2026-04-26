@@ -2047,13 +2047,22 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport,
 
     const previousStatus = sale.status;
     
-    // Determinar la fecha a usar (la enviada o la actual)
-    const effectiveDate = statusDate ? new Date(statusDate) : new Date();
+    // Para el historial siempre usar la fecha actual
+    const historyDate = new Date();
+    
+    // Para appointedDate y completedDate, usar la fecha enviada con hora al mediodia
+    // para evitar problemas de timezone
+    let appointmentOrCompletionDate = new Date();
+    if (statusDate) {
+      // Parsear la fecha como local (no UTC) agregando hora al mediodia
+      const [year, month, day] = statusDate.split('-').map(Number);
+      appointmentOrCompletionDate = new Date(year, month - 1, day, 12, 0, 0);
+    }
 
     sale.statusHistory.push({
       status,
       changedBy: req.user.userId,
-      changedAt: effectiveDate,
+      changedAt: historyDate,
       notes: notes || "",
     });
 
@@ -2061,13 +2070,13 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport,
     
     // Guardar fechas especificas segun el estado
     if (status === "appointed") {
-      sale.appointedDate = effectiveDate;
+      sale.appointedDate = appointmentOrCompletionDate;
       // Guardar horario del turno si se proporciona
       if (appointmentSlot) {
         sale.appointmentSlot = appointmentSlot;
       }
     } else if (status === "completed") {
-      sale.completedDate = effectiveDate;
+      sale.completedDate = appointmentOrCompletionDate;
       // Guardar numero de CTO si se proporciona
       if (ctoNumber) {
         sale.ctoNumber = ctoNumber;
