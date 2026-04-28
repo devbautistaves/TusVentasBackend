@@ -567,6 +567,19 @@ const userSchema = new mongoose.Schema(
       default: 0,
       min: [0, "Total commissions cannot be negative"],
     },
+    // Campos para tracking de actividad en linea
+    lastActivity: {
+      type: Date,
+      default: null,
+    },
+    sessionStart: {
+      type: Date,
+      default: null,
+    },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -1450,6 +1463,14 @@ const token = jwt.sign(
   { expiresIn: process.env.JWT_EXPIRES_IN || "1h" },
 )
 
+    // Marcar usuario como online y registrar inicio de sesion
+    const now = new Date()
+    await User.findByIdAndUpdate(user._id, {
+      isOnline: true,
+      sessionStart: now,
+      lastActivity: now,
+    })
+
     res.json({
       success: true,
       message: "Login successful",
@@ -1488,6 +1509,114 @@ app.get("/api/users/profile", authenticateToken, async (req, res) => {
     })
   } catch (error) {
     handleError(res, error, "Failed to fetch profile")
+  }
+})
+
+// Actualizar actividad del usuario (heartbeat) - llamar cada 30 segundos
+app.post("/api/users/heartbeat", authenticateToken, async (req, res) => {
+  try {
+    const now = new Date()
+    await User.findByIdAndUpdate(req.user.userId, {
+      lastActivity: now,
+      isOnline: true,
+    })
+    res.json({ success: true })
+  } catch (error) {
+    res.status(500).json({ success: false, error: "Failed to update activity" })
+  }
+})
+
+// Logout - marcar usuario como offline
+app.post("/api/auth/logout", authenticateToken, async (req, res) => {
+  try {
+    await User.findByIdAndUpdate(req.user.userId, {
+      isOnline: false,
+      lastActivity: new Date(),
+    })
+    res.json({ success: true, message: "Logged out successfully" })
+  } catch (error) {
+    handleError(res, error, "Logout failed")
+  }
+})
+
+// Obtener usuarios en linea (solo admin)
+app.get("/api/admin/online-users", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Admin or Supervisor role required.",
+      })
+    }
+
+    // Considerar "online" si la ultima actividad fue hace menos de 2 minutos
+    // Considerar "idle" si fue hace entre 2 y 10 minutos
+    // Considerar "offline" si fue hace mas de 10 minutos
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000)
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000)
+    
+    // Obtener usuarios activos que han tenido actividad reciente
+    const users = await User.find({
+      isActive: true,
+      role: { $ne: "admin" },
+      $or: [
+        { isOnline: true },
+        { lastActivity: { $gte: tenMinutesAgo } }
+      ]
+    }).select("name email role lastActivity sessionStart isOnline")
+    
+    // Agregar status calculado a cada usuario
+    const usersWithStatus = users.map(user => {
+      const lastActivity = user.lastActivity ? new Date(user.lastActivity) : null
+      let status = "offline"
+      let minutesSinceActivity = null
+      let minutesOnline = null
+      
+      if (lastActivity) {
+        minutesSinceActivity = Math.floor((Date.now() - lastActivity.getTime()) / 60000)
+        
+        if (minutesSinceActivity <= 2) {
+          status = "online"
+        } else if (minutesSinceActivity <= 10) {
+          status = "idle"
+        } else {
+          status = "offline"
+        }
+      }
+      
+      if (user.sessionStart) {
+        minutesOnline = Math.floor((Date.now() - new Date(user.sessionStart).getTime()) / 60000)
+      }
+      
+      return {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status,
+        lastActivity: user.lastActivity,
+        sessionStart: user.sessionStart,
+        minutesSinceActivity,
+        minutesOnline,
+        isOnline: user.isOnline,
+      }
+    })
+    
+    // Ordenar: online primero, luego idle, luego offline
+    const statusOrder = { online: 0, idle: 1, offline: 2 }
+    usersWithStatus.sort((a, b) => statusOrder[a.status] - statusOrder[b.status])
+    
+    res.json({
+      success: true,
+      users: usersWithStatus,
+      summary: {
+        online: usersWithStatus.filter(u => u.status === "online").length,
+        idle: usersWithStatus.filter(u => u.status === "idle").length,
+        offline: usersWithStatus.filter(u => u.status === "offline").length,
+      }
+    })
+  } catch (error) {
+    handleError(res, error, "Failed to fetch online users")
   }
 })
 
