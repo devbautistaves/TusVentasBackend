@@ -859,6 +859,149 @@ const planSchema = new mongoose.Schema(
 
 
 
+// Lead Schema - Sistema de embudo de ventas
+const leadSchema = new mongoose.Schema(
+  {
+    // Datos del contacto/lead
+    name: {
+      type: String,
+      required: [true, "Lead name is required"],
+      trim: true,
+      maxlength: [100, "Name cannot exceed 100 characters"],
+    },
+    phone: {
+      type: String,
+      required: [true, "Phone is required"],
+      trim: true,
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+    },
+    dni: {
+      type: String,
+      trim: true,
+    },
+    address: {
+      street: { type: String, trim: true },
+      number: { type: String, trim: true },
+      city: { type: String, trim: true },
+      province: { type: String, trim: true },
+      postalCode: { type: String, trim: true },
+    },
+    // Origen del lead
+    source: {
+      type: String,
+      enum: ["facebook", "instagram", "google", "referido", "llamada_entrante", "puerta_a_puerta", "otro"],
+      default: "otro",
+    },
+    sourceDetail: {
+      type: String,
+      trim: true,
+      maxlength: [200, "Source detail cannot exceed 200 characters"],
+    },
+    // Asignacion
+    assignedTo: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "Assigned seller is required"],
+    },
+    assignedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "Assigner is required"],
+    },
+    assignedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    // Estado del lead en el embudo
+    status: {
+      type: String,
+      enum: {
+        values: ["nuevo", "contactado", "interesado", "no_contesta", "no_interesado", "seguimiento", "cerrado_ganado", "cerrado_perdido"],
+        message: "Status must be one of the allowed values",
+      },
+      default: "nuevo",
+    },
+    // Prioridad
+    priority: {
+      type: String,
+      enum: ["baja", "media", "alta", "urgente"],
+      default: "media",
+    },
+    // Plan de interes (opcional)
+    interestedPlanId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Plan",
+    },
+    interestedPlanName: {
+      type: String,
+      trim: true,
+    },
+    // Historial de contactos/interacciones
+    contactHistory: [
+      {
+        type: {
+          type: String,
+          enum: ["llamada", "whatsapp", "email", "visita", "otro"],
+          required: true,
+        },
+        date: {
+          type: Date,
+          default: Date.now,
+        },
+        notes: {
+          type: String,
+          trim: true,
+          maxlength: [500, "Notes cannot exceed 500 characters"],
+        },
+        outcome: {
+          type: String,
+          enum: ["contactado", "no_contesta", "interesado", "no_interesado", "agendar_seguimiento", "cerrar"],
+          required: true,
+        },
+        nextAction: {
+          type: String,
+          trim: true,
+          maxlength: [200, "Next action cannot exceed 200 characters"],
+        },
+        nextActionDate: {
+          type: Date,
+        },
+        recordedBy: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+        },
+      },
+    ],
+    // Fecha de proximo seguimiento
+    nextFollowUp: {
+      type: Date,
+    },
+    // Notas generales
+    notes: {
+      type: String,
+      trim: true,
+      maxlength: [1000, "Notes cannot exceed 1000 characters"],
+    },
+    // Referencia a la venta si se convierte
+    convertedToSaleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sale",
+    },
+    convertedAt: {
+      type: Date,
+    },
+  },
+  {
+    timestamps: true,
+  }
+)
+
+const Lead = mongoose.model("Lead", leadSchema)
+
 // Notification Schema
 const notificationSchema = new mongoose.Schema(
   {
@@ -3614,6 +3757,591 @@ app.get("/api/ad-costs/my", authenticateToken, async (req, res) => {
     });
   } catch (error) {
     handleError(res, error, "Failed to fetch my ad costs");
+  }
+});
+
+// ==================== LEADS API ====================
+
+// Obtener todos los leads (admin/supervisor)
+app.get("/api/leads", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Admin or Supervisor role required.",
+      });
+    }
+
+    const { status, assignedTo, source, month } = req.query;
+    const filter = {};
+
+    if (status) filter.status = status;
+    if (assignedTo) filter.assignedTo = assignedTo;
+    if (source) filter.source = source;
+    
+    // Filtro por mes
+    if (month) {
+      const [year, monthNum] = month.split("-");
+      const startDate = new Date(year, parseInt(monthNum) - 1, 1);
+      const endDate = new Date(year, parseInt(monthNum), 0, 23, 59, 59);
+      filter.createdAt = { $gte: startDate, $lte: endDate };
+    }
+
+    const leads = await Lead.find(filter)
+      .populate("assignedTo", "name email phone")
+      .populate("assignedBy", "name")
+      .populate("interestedPlanId", "name price")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      leads,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch leads");
+  }
+});
+
+// Obtener leads asignados al vendedor actual
+app.get("/api/leads/my", authenticateToken, async (req, res) => {
+  try {
+    const { status, source } = req.query;
+    const filter = { assignedTo: req.user.userId };
+
+    if (status) filter.status = status;
+    if (source) filter.source = source;
+
+    const leads = await Lead.find(filter)
+      .populate("assignedBy", "name")
+      .populate("interestedPlanId", "name price")
+      .sort({ nextFollowUp: 1, createdAt: -1 });
+
+    res.json({
+      success: true,
+      leads,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch my leads");
+  }
+});
+
+// Obtener un lead por ID
+app.get("/api/leads/:id", authenticateToken, async (req, res) => {
+  try {
+    const lead = await Lead.findById(req.params.id)
+      .populate("assignedTo", "name email phone")
+      .populate("assignedBy", "name")
+      .populate("interestedPlanId", "name price")
+      .populate("contactHistory.recordedBy", "name")
+      .populate("convertedToSaleId");
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: "Lead not found",
+      });
+    }
+
+    // Verificar acceso: admin/supervisor pueden ver todos, vendedor solo los suyos
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      if (lead.assignedTo._id.toString() !== req.user.userId) {
+        return res.status(403).json({
+          success: false,
+          error: "Access denied",
+        });
+      }
+    }
+
+    res.json({
+      success: true,
+      lead,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch lead");
+  }
+});
+
+// Crear un nuevo lead (admin/supervisor)
+app.post("/api/leads", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Admin or Supervisor role required.",
+      });
+    }
+
+    const {
+      name,
+      phone,
+      email,
+      dni,
+      address,
+      source,
+      sourceDetail,
+      assignedTo,
+      priority,
+      interestedPlanId,
+      notes,
+    } = req.body;
+
+    // Validar que el vendedor asignado existe y es vendedor activo
+    const seller = await User.findById(assignedTo);
+    if (!seller || seller.role !== "seller" || !seller.isActive) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid or inactive seller",
+      });
+    }
+
+    // Obtener nombre del plan si se especifica
+    let interestedPlanName = null;
+    if (interestedPlanId) {
+      const plan = await Plan.findById(interestedPlanId);
+      if (plan) {
+        interestedPlanName = plan.name;
+      }
+    }
+
+    const lead = new Lead({
+      name,
+      phone,
+      email,
+      dni,
+      address,
+      source: source || "otro",
+      sourceDetail,
+      assignedTo,
+      assignedBy: req.user.userId,
+      priority: priority || "media",
+      interestedPlanId,
+      interestedPlanName,
+      notes,
+      status: "nuevo",
+    });
+
+    await lead.save();
+
+    const populatedLead = await Lead.findById(lead._id)
+      .populate("assignedTo", "name email phone")
+      .populate("assignedBy", "name")
+      .populate("interestedPlanId", "name price");
+
+    res.status(201).json({
+      success: true,
+      message: "Lead created successfully",
+      lead: populatedLead,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to create lead");
+  }
+});
+
+// Actualizar un lead (admin/supervisor)
+app.put("/api/leads/:id", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Admin or Supervisor role required.",
+      });
+    }
+
+    const {
+      name,
+      phone,
+      email,
+      dni,
+      address,
+      source,
+      sourceDetail,
+      assignedTo,
+      priority,
+      interestedPlanId,
+      notes,
+      status,
+      nextFollowUp,
+    } = req.body;
+
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (phone) updateData.phone = phone;
+    if (email !== undefined) updateData.email = email;
+    if (dni !== undefined) updateData.dni = dni;
+    if (address) updateData.address = address;
+    if (source) updateData.source = source;
+    if (sourceDetail !== undefined) updateData.sourceDetail = sourceDetail;
+    if (priority) updateData.priority = priority;
+    if (notes !== undefined) updateData.notes = notes;
+    if (status) updateData.status = status;
+    if (nextFollowUp !== undefined) updateData.nextFollowUp = nextFollowUp;
+
+    // Si se reasigna el vendedor
+    if (assignedTo) {
+      const seller = await User.findById(assignedTo);
+      if (!seller || seller.role !== "seller" || !seller.isActive) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid or inactive seller",
+        });
+      }
+      updateData.assignedTo = assignedTo;
+    }
+
+    // Actualizar plan de interes
+    if (interestedPlanId !== undefined) {
+      if (interestedPlanId) {
+        const plan = await Plan.findById(interestedPlanId);
+        if (plan) {
+          updateData.interestedPlanId = interestedPlanId;
+          updateData.interestedPlanName = plan.name;
+        }
+      } else {
+        updateData.interestedPlanId = null;
+        updateData.interestedPlanName = null;
+      }
+    }
+
+    const lead = await Lead.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true, runValidators: true }
+    )
+      .populate("assignedTo", "name email phone")
+      .populate("assignedBy", "name")
+      .populate("interestedPlanId", "name price");
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: "Lead not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Lead updated successfully",
+      lead,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to update lead");
+  }
+});
+
+// Agregar interaccion/contacto al historial (vendedor puede usar esto)
+app.post("/api/leads/:id/contact", authenticateToken, async (req, res) => {
+  try {
+    const lead = await Lead.findById(req.params.id);
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: "Lead not found",
+      });
+    }
+
+    // Verificar acceso
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      if (lead.assignedTo.toString() !== req.user.userId) {
+        return res.status(403).json({
+          success: false,
+          error: "Access denied",
+        });
+      }
+    }
+
+    const { type, notes, outcome, nextAction, nextActionDate } = req.body;
+
+    if (!type || !outcome) {
+      return res.status(400).json({
+        success: false,
+        error: "Type and outcome are required",
+      });
+    }
+
+    // Agregar al historial
+    lead.contactHistory.push({
+      type,
+      notes,
+      outcome,
+      nextAction,
+      nextActionDate: nextActionDate ? new Date(nextActionDate) : undefined,
+      recordedBy: req.user.userId,
+      date: new Date(),
+    });
+
+    // Actualizar estado segun outcome
+    const statusMap = {
+      contactado: "contactado",
+      no_contesta: "no_contesta",
+      interesado: "interesado",
+      no_interesado: "no_interesado",
+      agendar_seguimiento: "seguimiento",
+      cerrar: lead.status, // No cambia automaticamente
+    };
+
+    if (statusMap[outcome] && outcome !== "cerrar") {
+      lead.status = statusMap[outcome];
+    }
+
+    // Actualizar fecha de proximo seguimiento si se especifica
+    if (nextActionDate) {
+      lead.nextFollowUp = new Date(nextActionDate);
+    }
+
+    await lead.save();
+
+    const populatedLead = await Lead.findById(lead._id)
+      .populate("assignedTo", "name email phone")
+      .populate("assignedBy", "name")
+      .populate("interestedPlanId", "name price")
+      .populate("contactHistory.recordedBy", "name");
+
+    res.json({
+      success: true,
+      message: "Contact recorded successfully",
+      lead: populatedLead,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to record contact");
+  }
+});
+
+// Actualizar estado del lead (vendedor puede actualizar estado de sus leads)
+app.put("/api/leads/:id/status", authenticateToken, async (req, res) => {
+  try {
+    const lead = await Lead.findById(req.params.id);
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: "Lead not found",
+      });
+    }
+
+    // Verificar acceso
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      if (lead.assignedTo.toString() !== req.user.userId) {
+        return res.status(403).json({
+          success: false,
+          error: "Access denied",
+        });
+      }
+    }
+
+    const { status, notes } = req.body;
+
+    if (!status) {
+      return res.status(400).json({
+        success: false,
+        error: "Status is required",
+      });
+    }
+
+    lead.status = status;
+
+    // Agregar nota al historial si se proporciona
+    if (notes) {
+      lead.contactHistory.push({
+        type: "otro",
+        notes: `Cambio de estado a ${status}: ${notes}`,
+        outcome: status === "cerrado_ganado" || status === "cerrado_perdido" ? "cerrar" : "contactado",
+        recordedBy: req.user.userId,
+        date: new Date(),
+      });
+    }
+
+    await lead.save();
+
+    const populatedLead = await Lead.findById(lead._id)
+      .populate("assignedTo", "name email phone")
+      .populate("assignedBy", "name")
+      .populate("interestedPlanId", "name price");
+
+    res.json({
+      success: true,
+      message: "Lead status updated",
+      lead: populatedLead,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to update lead status");
+  }
+});
+
+// Convertir lead a venta
+app.post("/api/leads/:id/convert", authenticateToken, async (req, res) => {
+  try {
+    const lead = await Lead.findById(req.params.id);
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: "Lead not found",
+      });
+    }
+
+    // Verificar acceso
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      if (lead.assignedTo.toString() !== req.user.userId) {
+        return res.status(403).json({
+          success: false,
+          error: "Access denied",
+        });
+      }
+    }
+
+    if (lead.status === "cerrado_ganado" && lead.convertedToSaleId) {
+      return res.status(400).json({
+        success: false,
+        error: "Lead already converted to sale",
+        saleId: lead.convertedToSaleId,
+      });
+    }
+
+    // Retornar datos prellenados para crear la venta
+    res.json({
+      success: true,
+      message: "Lead data ready for conversion",
+      leadData: {
+        leadId: lead._id,
+        sellerId: lead.assignedTo,
+        customerInfo: {
+          name: lead.name,
+          phone: lead.phone,
+          email: lead.email || "",
+          dni: lead.dni || "",
+          address: lead.address || {},
+        },
+        interestedPlanId: lead.interestedPlanId,
+        interestedPlanName: lead.interestedPlanName,
+      },
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to prepare lead conversion");
+  }
+});
+
+// Marcar lead como convertido (llamado despues de crear la venta)
+app.put("/api/leads/:id/mark-converted", authenticateToken, async (req, res) => {
+  try {
+    const { saleId } = req.body;
+
+    if (!saleId) {
+      return res.status(400).json({
+        success: false,
+        error: "Sale ID is required",
+      });
+    }
+
+    const lead = await Lead.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: "cerrado_ganado",
+        convertedToSaleId: saleId,
+        convertedAt: new Date(),
+      },
+      { new: true }
+    );
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: "Lead not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Lead marked as converted",
+      lead,
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to mark lead as converted");
+  }
+});
+
+// Eliminar lead (solo admin)
+app.delete("/api/leads/:id", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied. Admin role required.",
+      });
+    }
+
+    const lead = await Lead.findByIdAndDelete(req.params.id);
+
+    if (!lead) {
+      return res.status(404).json({
+        success: false,
+        error: "Lead not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Lead deleted successfully",
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to delete lead");
+  }
+});
+
+// Estadisticas de leads (admin/supervisor)
+app.get("/api/leads/stats/summary", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      return res.status(403).json({
+        success: false,
+        error: "Access denied",
+      });
+    }
+
+    const { month, assignedTo } = req.query;
+    const filter = {};
+
+    if (assignedTo) filter.assignedTo = assignedTo;
+
+    if (month) {
+      const [year, monthNum] = month.split("-");
+      const startDate = new Date(year, parseInt(monthNum) - 1, 1);
+      const endDate = new Date(year, parseInt(monthNum), 0, 23, 59, 59);
+      filter.createdAt = { $gte: startDate, $lte: endDate };
+    }
+
+    const stats = await Lead.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const totalLeads = await Lead.countDocuments(filter);
+
+    // Calcular tasas de conversion
+    const statusCounts = {};
+    stats.forEach((s) => {
+      statusCounts[s._id] = s.count;
+    });
+
+    const conversionRate = totalLeads > 0
+      ? ((statusCounts.cerrado_ganado || 0) / totalLeads * 100).toFixed(1)
+      : 0;
+
+    res.json({
+      success: true,
+      stats: {
+        total: totalLeads,
+        byStatus: statusCounts,
+        conversionRate: parseFloat(conversionRate),
+      },
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch lead stats");
   }
 });
 
