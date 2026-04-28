@@ -207,6 +207,117 @@ async function enviarEmailNuevaVenta(sale, seller, plan) {
   }
 }
 
+// Funcion para enviar email de nuevo lead asignado al vendedor
+async function enviarEmailNuevoLead(lead, seller, assignedBy) {
+  try {
+    if (!transporter) {
+      console.log('Email transporter no configurado. Saltando envio de email de nuevo lead.');
+      return;
+    }
+
+    if (!seller.email) {
+      console.log('El vendedor no tiene email configurado');
+      return;
+    }
+
+    console.log(`Enviando email de nuevo lead a ${seller.email}...`);
+
+    const priorityLabels = {
+      baja: "Baja",
+      media: "Media",
+      alta: "Alta",
+      urgente: "Urgente"
+    };
+
+    const priorityColors = {
+      baja: "#6b7280",
+      media: "#3b82f6",
+      alta: "#f59e0b",
+      urgente: "#ef4444"
+    };
+
+    await transporter.sendMail({
+      from: `"TusVentas" <${process.env.EMAIL_SMTP}>`,
+      to: seller.email,
+      subject: `Nuevo lead asignado: ${lead.name}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto;">
+          
+          <div style="background-color: #1a1a2e; padding: 20px; text-align: center;">
+            <h1 style="color: #f59e0b; margin: 0;">TusVentas</h1>
+          </div>
+
+          <div style="padding: 30px; background-color: #f8f9fa;">
+            <h2 style="color: #1a1a2e;">Hola ${seller.name},</h2>
+            
+            <p style="font-size: 16px; color: #333;">
+              Se te ha asignado un nuevo lead para gestionar:
+            </p>
+
+            <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #3b82f6;">
+              <h3 style="margin: 0 0 15px 0; color: #1a1a2e;">Datos del Lead</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                <tr>
+                  <td style="padding: 8px 0; color: #666;"><strong>Nombre:</strong></td>
+                  <td style="padding: 8px 0;">${lead.name}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666;"><strong>Telefono:</strong></td>
+                  <td style="padding: 8px 0;">${lead.phone}</td>
+                </tr>
+                ${lead.email ? `<tr>
+                  <td style="padding: 8px 0; color: #666;"><strong>Email:</strong></td>
+                  <td style="padding: 8px 0;">${lead.email}</td>
+                </tr>` : ''}
+                <tr>
+                  <td style="padding: 8px 0; color: #666;"><strong>Origen:</strong></td>
+                  <td style="padding: 8px 0;">${lead.source || 'No especificado'}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 8px 0; color: #666;"><strong>Prioridad:</strong></td>
+                  <td style="padding: 8px 0; color: ${priorityColors[lead.priority] || '#333'}; font-weight: bold;">
+                    ${priorityLabels[lead.priority] || lead.priority}
+                  </td>
+                </tr>
+                ${lead.interestedPlanName ? `<tr>
+                  <td style="padding: 8px 0; color: #666;"><strong>Plan de interes:</strong></td>
+                  <td style="padding: 8px 0;">${lead.interestedPlanName}</td>
+                </tr>` : ''}
+              </table>
+            </div>
+
+            ${lead.notes ? `
+            <div style="background-color: #fef3c7; padding: 15px; border-radius: 8px; margin: 20px 0;">
+              <h4 style="margin: 0 0 10px 0; color: #92400e;">Notas</h4>
+              <p style="margin: 0;">${lead.notes}</p>
+            </div>
+            ` : ''}
+
+            <p style="color: #666; font-size: 14px;">
+              Asignado por: ${assignedBy?.name || 'Sistema'}
+            </p>
+
+            <div style="text-align: center; margin-top: 30px;">
+              <a href="https://tusventas.netlify.app/seller/leads"
+                style="display:inline-block; padding:12px 30px; background-color:#f59e0b; color:#1a1a2e; text-decoration:none; border-radius:6px; font-weight: bold;">
+                Ver mis leads
+              </a>
+            </div>
+          </div>
+
+          <div style="background-color: #1a1a2e; padding: 15px; text-align: center;">
+            <small style="color: #888;">Este mensaje fue enviado automaticamente por el sistema TusVentas.</small>
+          </div>
+        </div>
+      `
+    });
+
+    console.log(`Email de nuevo lead enviado a ${seller.email}`);
+  } catch (error) {
+    console.error('Error enviando email de nuevo lead:', error.message);
+  }
+}
+
 // Funcion para enviar email de cambio de estado al dueno de la venta (vendedor)
 async function enviarEmailCambioEstado(sale, previousStatus, newStatus, notes) {
   try {
@@ -4097,6 +4208,33 @@ app.post("/api/leads", authenticateToken, async (req, res) => {
       .populate("assignedTo", "name email phone")
       .populate("assignedBy", "name")
       .populate("interestedPlanId", "name price");
+
+    // Crear notificacion para el vendedor asignado
+    try {
+      const seller = await User.findById(assignedTo);
+      const assigner = await User.findById(req.user.userId);
+      
+      if (seller) {
+        // Crear notificacion en el sistema
+        const notification = new Notification({
+          title: "Nuevo lead asignado",
+          message: `Se te ha asignado un nuevo lead: ${name}. Telefono: ${phone}. Prioridad: ${priority || "media"}.`,
+          type: "info",
+          priority: priority === "urgente" ? "urgent" : priority === "alta" ? "high" : "medium",
+          recipients: [assignedTo],
+          createdBy: req.user.userId,
+        });
+        await notification.save();
+        
+        // Enviar email al vendedor
+        await enviarEmailNuevoLead(lead, seller, assigner);
+        
+        console.log(`Notificacion y email enviados al vendedor ${seller.name} por nuevo lead`);
+      }
+    } catch (notifError) {
+      console.error("Error creando notificacion de lead:", notifError.message);
+      // No fallamos el request si falla la notificacion
+    }
 
     res.status(201).json({
       success: true,
