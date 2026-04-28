@@ -1246,10 +1246,21 @@ const handleError = (res, error, message = "Server error") => {
 
   if (error.name === "ValidationError") {
     const errors = Object.values(error.errors).map((err) => err.message)
+    console.error("Validation errors details:", errors)
     return res.status(400).json({
       success: false,
       error: "Validation failed",
+      message: errors.join(", "),
       details: errors,
+    })
+  }
+
+  if (error.name === "CastError") {
+    console.error("Cast error - Invalid ObjectId:", error.value)
+    return res.status(400).json({
+      success: false,
+      error: `Invalid ${error.path}: ${error.value}`,
+      message: `El valor '${error.value}' no es valido para el campo '${error.path}'`,
     })
   }
 
@@ -1258,6 +1269,7 @@ const handleError = (res, error, message = "Server error") => {
     return res.status(400).json({
       success: false,
       error: `${field} already exists`,
+      message: `El campo ${field} ya existe`,
       code: "DUPLICATE_FIELD",
     })
   }
@@ -1265,6 +1277,7 @@ const handleError = (res, error, message = "Server error") => {
   res.status(500).json({
     success: false,
     error: message,
+    message: error.message || message,
   })
 }
 
@@ -3864,6 +3877,8 @@ app.get("/api/leads/:id", authenticateToken, async (req, res) => {
 // Crear un nuevo lead (admin/supervisor)
 app.post("/api/leads", authenticateToken, async (req, res) => {
   try {
+    console.log("[POST /api/leads] Request body:", JSON.stringify(req.body, null, 2));
+    
     if (req.user.role !== "admin" && req.user.role !== "supervisor") {
       return res.status(403).json({
         success: false,
@@ -3885,6 +3900,31 @@ app.post("/api/leads", authenticateToken, async (req, res) => {
       notes,
     } = req.body;
 
+    // Validar campos requeridos
+    if (!name || !name.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Lead name is required",
+        message: "El nombre del lead es obligatorio",
+      });
+    }
+    
+    if (!phone || !phone.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: "Phone is required",
+        message: "El telefono es obligatorio",
+      });
+    }
+    
+    if (!assignedTo) {
+      return res.status(400).json({
+        success: false,
+        error: "AssignedTo is required",
+        message: "Debe asignar el lead a un vendedor",
+      });
+    }
+
     // Validar que el vendedor asignado existe y es vendedor activo
     const seller = await User.findById(assignedTo);
     if (!seller || seller.role !== "seller" || !seller.isActive) {
@@ -3894,29 +3934,31 @@ app.post("/api/leads", authenticateToken, async (req, res) => {
       });
     }
 
-    // Obtener nombre del plan si se especifica
+    // Obtener nombre del plan si se especifica (validar que sea un ObjectId valido)
     let interestedPlanName = null;
-    if (interestedPlanId) {
+    let validPlanId = null;
+    if (interestedPlanId && interestedPlanId.trim() !== "" && mongoose.Types.ObjectId.isValid(interestedPlanId)) {
       const plan = await Plan.findById(interestedPlanId);
       if (plan) {
         interestedPlanName = plan.name;
+        validPlanId = interestedPlanId;
       }
     }
 
     const lead = new Lead({
-      name,
-      phone,
-      email,
-      dni,
-      address,
+      name: name?.trim(),
+      phone: phone?.trim(),
+      email: email?.trim() || undefined,
+      dni: dni?.trim() || undefined,
+      address: address && Object.values(address).some(v => v && v.trim()) ? address : undefined,
       source: source || "otro",
-      sourceDetail,
+      sourceDetail: sourceDetail?.trim() || undefined,
       assignedTo,
       assignedBy: req.user.userId,
       priority: priority || "media",
-      interestedPlanId,
-      interestedPlanName,
-      notes,
+      interestedPlanId: validPlanId || undefined,
+      interestedPlanName: interestedPlanName || undefined,
+      notes: notes?.trim() || undefined,
       status: "nuevo",
     });
 
@@ -3988,9 +4030,9 @@ app.put("/api/leads/:id", authenticateToken, async (req, res) => {
       updateData.assignedTo = assignedTo;
     }
 
-    // Actualizar plan de interes
+    // Actualizar plan de interes (validar que sea un ObjectId valido)
     if (interestedPlanId !== undefined) {
-      if (interestedPlanId) {
+      if (interestedPlanId && interestedPlanId.trim() !== "" && mongoose.Types.ObjectId.isValid(interestedPlanId)) {
         const plan = await Plan.findById(interestedPlanId);
         if (plan) {
           updateData.interestedPlanId = interestedPlanId;
