@@ -2259,7 +2259,7 @@ console.log('CUSTOMER:', req.body.customer);
     const statusHistory = [
       {
         status: "pending",
-        changedBy: currentUser._id,
+        changedBy: currentUser.name,
         changedAt: new Date(),
         notes: "Venta registrada",
       },
@@ -2851,6 +2851,10 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport,
       return res.status(404).json({ success: false, error: "Sale not found" });
     }
 
+    // Obtener el nombre del usuario que hace el cambio
+    const currentUser = await User.findById(req.user.userId);
+    const changedByName = currentUser ? currentUser.name : req.user.userId;
+
     const previousStatus = sale.status;
     
     // Para el historial siempre usar la fecha actual
@@ -2867,7 +2871,7 @@ app.put("/api/admin/sales/:id/status", authenticateToken, requireAdminOrSupport,
 
     sale.statusHistory.push({
       status,
-      changedBy: req.user.userId,
+      changedBy: changedByName,
       changedAt: historyDate,
       notes: notes || "",
     });
@@ -3084,6 +3088,10 @@ app.put("/api/admin/sales/:id/assign", authenticateToken, requireAdminOrSupport,
     const oldSellerId = sale.sellerId;
     const oldSellerName = sale.sellerName;
 
+    // Obtener el nombre del usuario que hace el cambio
+    const currentUserForAssign = await User.findById(req.user.userId);
+    const changedByNameAssign = currentUserForAssign ? currentUserForAssign.name : req.user.userId;
+
     // Actualizar el vendedor
     sale.sellerId = newSeller._id;
     sale.sellerName = newSeller.name;
@@ -3091,9 +3099,9 @@ app.put("/api/admin/sales/:id/assign", authenticateToken, requireAdminOrSupport,
     // Agregar al historial de estados
     sale.statusHistory.push({
       status: sale.status,
-      changedBy: req.user.userId,
+      changedBy: changedByNameAssign,
       changedAt: new Date(),
-      notes: `Venta reasignada de ${oldSellerName} a ${newSeller.name}`,
+      notes: `Venta asignada de ${oldSellerName} a ${newSeller.name}`,
     });
 
     await sale.save();
@@ -3193,6 +3201,10 @@ app.put("/api/sales/:id/assign", authenticateToken, async (req, res) => {
     const oldSellerId = sale.sellerId;
     const oldSellerName = sale.sellerName;
 
+    // Obtener el nombre del usuario que hace el cambio
+    const currentUserForSupervisorAssign = await User.findById(userId);
+    const changedByNameSupervisor = currentUserForSupervisorAssign ? currentUserForSupervisorAssign.name : userId;
+
     // Actualizar el vendedor (mantiene el supervisor como creador original)
     sale.sellerId = newSeller._id;
     sale.sellerName = newSeller.name;
@@ -3205,7 +3217,7 @@ app.put("/api/sales/:id/assign", authenticateToken, async (req, res) => {
     // Agregar al historial de estados
     sale.statusHistory.push({
       status: sale.status,
-      changedBy: userId,
+      changedBy: changedByNameSupervisor,
       changedAt: new Date(),
       notes: `Venta asignada de ${oldSellerName} a ${newSeller.name}`,
     });
