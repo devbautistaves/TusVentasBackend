@@ -9,7 +9,6 @@ require("dotenv").config()
 const axios = require('axios')
 const nodemailer = require('nodemailer');
 const authenticateToken = require("./middleware/auth")
-const { connectDB, connectDefaultDB, getConnection } = require("./config/database")
 
 
 const multer = require("multer")
@@ -539,46 +538,12 @@ app.use(cors()) // 👈 ¡Solo para pruebas! No uses esto en producción
 app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ extended: true, limit: "10mb" }))
 
-// Multi-tenant middleware - detecta X-Tenant-ID header para cambiar de base de datos
-let currentTenant = 'default'
-app.use(async (req, res, next) => {
-  const tenantId = req.headers['x-tenant-id'] || 'default'
-  
-  // Si el tenant cambió, reconectar a la base de datos correcta
-  if (tenantId !== currentTenant) {
-    console.log(`🔄 Cambiando de tenant: ${currentTenant} -> ${tenantId}`)
-    try {
-      await connectDB(tenantId)
-      currentTenant = tenantId
-    } catch (error) {
-      console.error(`❌ Error cambiando a tenant ${tenantId}:`, error.message)
-      return res.status(500).json({ 
-        success: false, 
-        error: 'Error de conexión a base de datos',
-        message: 'No se pudo conectar a la base de datos del tenant'
-      })
-    }
-  }
-  
-  // Agregar el tenantId al request para uso posterior
-  req.tenantId = tenantId
-  next()
-})
-
 // Serve uploaded files
 app.use("/uploads", express.static(path.join(__dirname, "uploads")))
 
 // MongoDB Connection with better error handling - MODIFICADO PARA MONGODB CLOUD
-// Soporta multi-tenancy: usa MONGODB_URI por defecto, MONGODB_URI_DEMO para demo
-const connectDB = async (tenantId = 'default') => {
+const connectDB = async () => {
   try {
-    // Seleccionar la URI según el tenant
-    const mongoUri = tenantId === 'demo' 
-      ? (process.env.MONGODB_URI_DEMO || process.env.MONGODB_URI)
-      : process.env.MONGODB_URI
-    
-    console.log(`🔄 Conectando a MongoDB para tenant: ${tenantId}`)
-
     // Clear any existing connections
     if (mongoose.connection.readyState !== 0) {
       await mongoose.disconnect()
@@ -596,7 +561,7 @@ const connectDB = async (tenantId = 'default') => {
       w: "majority",
     }
 
-    const conn = await mongoose.connect(mongoUri, options)
+    const conn = await mongoose.connect(process.env.MONGODB_URI, options)
 
     console.log(`✅ MongoDB Atlas Connected: ${conn.connection.host}`)
     console.log(`📊 Database: ${conn.connection.name}`)
