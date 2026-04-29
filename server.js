@@ -946,6 +946,29 @@ planPrice: {
       trim: true,
       default: null,
     },
+    // Campos para sistema de bajas
+    isBaja: {
+      type: Boolean,
+      default: false,
+    },
+    bajaDate: {
+      type: Date,
+      default: null,
+    },
+    bajaMonthsLimit: {
+      type: Number,
+      default: null,
+    },
+    bajaReason: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    bajaAmount: {
+      type: Number,
+      default: 0,
+      min: [0, "Baja amount must be 0 or greater"],
+    },
   },
   {
     timestamps: true,
