@@ -772,8 +772,8 @@ planPrice: {
           },
         },
         changedBy: {
-          type: mongoose.Schema.Types.ObjectId,
-          ref: "User",
+          type: String,
+          trim: true,
         },
         changedAt: {
           type: Date,
