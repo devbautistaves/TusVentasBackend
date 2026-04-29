@@ -986,11 +986,6 @@ const planSchema = new mongoose.Schema(
 // Lead Schema - Sistema de embudo de ventas
 const leadSchema = new mongoose.Schema(
   {
-    companyId: {
-      type: String,
-      enum: ["tusventas", "tupaginaya"],
-      default: "tusventas",
-    },
     // Datos del contacto/lead
     name: {
       type: String,
@@ -1134,11 +1129,6 @@ const Lead = mongoose.model("Lead", leadSchema)
 // Notification Schema
 const notificationSchema = new mongoose.Schema(
   {
-    companyId: {
-      type: String,
-      enum: ["tusventas", "tupaginaya"],
-      default: "tusventas",
-    },
     title: {
       type: String,
       required: [true, "Title is required"],
@@ -1222,11 +1212,6 @@ attachments: [
 // ChatRoom Schema
 const chatRoomSchema = new mongoose.Schema(
   {
-    companyId: {
-      type: String,
-      enum: ["tusventas", "tupaginaya"],
-      default: "tusventas",
-    },
     name: {
       type: String,
       required: [true, "Chat room name is required"],
@@ -3165,10 +3150,8 @@ app.get("/api/notifications", authenticateToken, async (req, res) => {
   try {
     const { page = 1, limit = 20, type, priority, unreadOnly } = req.query
     const userId = req.user.userId
-    const companyId = getCompanyId(req)
 
     const query = {
-      companyId,
       $or: [
         { recipients: userId },
         { recipients: { $size: 0 } }, // Global notifications
@@ -3215,8 +3198,6 @@ app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("at
   try {
 const { title, message, type, priority, recipients, meetingInfo } = req.body;
 const { recipientType } = req.body;
-const companyId = getCompanyId(req);
-
     // Parsear attachments si vienen en string (por si acaso)
     if (typeof req.body.attachments === 'string') {
       try {
@@ -3236,7 +3217,7 @@ let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse
 
 
 if (recipientType === "all") {
-  const allVendedores = await User.find({ companyId, isActive: true,
+  const allVendedores = await User.find({     isActive: true,
     role: { $in: ["seller", "admin"] },
   }).select("_id");
   parsedRecipients = allVendedores.map(u => u._id.toString());
@@ -3273,8 +3254,7 @@ let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.pa
   })
 );
 
-const notification = new Notification({
-      companyId,
+    const notification = new Notification({
       title,
       message,
       type: type || "info",
@@ -3376,10 +3356,8 @@ app.put("/api/notifications/:id/read", authenticateToken, async (req, res) => {
 app.get("/api/notifications/unread-count", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId
-    const companyId = getCompanyId(req)
 
     const query = {
-      companyId,
       $or: [
         { recipients: userId },
         { recipients: { $size: 0 } }, // Global notifications
@@ -3403,10 +3381,8 @@ app.get("/api/notifications/unread-count", authenticateToken, async (req, res) =
 app.get("/api/chat/rooms", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId
-    const companyId = getCompanyId(req)
 
     const rooms = await ChatRoom.find({
-      companyId,
       participants: userId,
       isActive: true,
     })
@@ -3428,7 +3404,6 @@ app.post("/api/chat/rooms", authenticateToken, async (req, res) => {
   try {
     const { name, type, participants } = req.body
     const userId = req.user.userId
-    const companyId = getCompanyId(req)
 
     if (!name || !type) {
       return res.status(400).json({
@@ -3443,7 +3418,6 @@ app.post("/api/chat/rooms", authenticateToken, async (req, res) => {
     }
 
     const chatRoom = new ChatRoom({
-      companyId,
       name,
       type,
       participants: roomParticipants,
@@ -3600,7 +3574,6 @@ app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
   try {
     const currentUserId = req.user.userId
     const targetUserId = req.params.userId
-    const companyId = getCompanyId(req)
 
     if (currentUserId === targetUserId) {
       return res.status(400).json({
@@ -3611,14 +3584,13 @@ app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
 
     // Check if private room already exists
     let room = await ChatRoom.findOne({
-      companyId,
       type: "private",
       participants: { $all: [currentUserId, targetUserId], $size: 2 },
     })
       .populate("participants", "name role")
       .populate("lastMessage")
 
-if (!room) {
+    if (!room) {
       // Create new private room
       const targetUser = await User.findById(targetUserId)
       if (!targetUser) {
@@ -3629,7 +3601,6 @@ if (!room) {
       }
 
       room = new ChatRoom({
-        companyId,
         name: `Private chat`,
         type: "private",
         participants: [currentUserId, targetUserId],
@@ -3654,22 +3625,19 @@ if (!room) {
 app.get("/api/chat/group", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId
-    const companyId = getCompanyId(req)
 
     // Find or create group chat room
     let groupRoom = await ChatRoom.findOne({
-      companyId,
       type: "group",
       name: "Equipo de Ventas",
     }).populate("participants", "name role")
 
-if (!groupRoom) {
-      // Create group chat room with all users from this company
-      const allUsers = await User.find({ companyId, isActive: true }).select("_id")
+    if (!groupRoom) {
+      // Create group chat room with all users
+      const allUsers = await User.find({ isActive: true }).select("_id")
       const participantIds = allUsers.map((user) => user._id)
 
       groupRoom = new ChatRoom({
-        companyId,
         name: "Equipo de Ventas",
         type: "group",
         participants: participantIds,
@@ -3700,7 +3668,6 @@ if (!groupRoom) {
 app.get("/api/chat/private-admin", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId
-    const companyId = getCompanyId(req)
 
     if (req.user.role === "admin") {
       return res.status(400).json({
@@ -3709,8 +3676,8 @@ app.get("/api/chat/private-admin", authenticateToken, async (req, res) => {
       })
     }
 
-    // Find admin user from same company
-    const admin = await User.findOne({ companyId, role: "admin" })
+    // Find admin user
+    const admin = await User.findOne({ role: "admin" })
     if (!admin) {
       return res.status(404).json({
         success: false,
@@ -3720,14 +3687,12 @@ app.get("/api/chat/private-admin", authenticateToken, async (req, res) => {
 
     // Find or create private chat with admin
     let privateRoom = await ChatRoom.findOne({
-      companyId,
       type: "private",
       participants: { $all: [userId, admin._id], $size: 2 },
     }).populate("participants", "name role")
 
     if (!privateRoom) {
       privateRoom = new ChatRoom({
-        companyId,
         name: "Chat con Admin",
         type: "private",
         participants: [userId, admin._id],
@@ -3750,11 +3715,9 @@ app.get("/api/chat/private-admin", authenticateToken, async (req, res) => {
 app.get("/api/chat/private-chats", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const adminId = req.user.userId
-    const companyId = getCompanyId(req)
 
     // Get all private chats where admin is a participant
     const privateChats = await ChatRoom.find({
-      companyId,
       type: "private",
       participants: adminId,
     })
@@ -3903,8 +3866,7 @@ app.get("/api/admin/ad-costs", authenticateToken, async (req, res) => {
     }
 
     const { month, supervisorId } = req.query;
-    const companyId = getCompanyId(req);
-    const filter = { companyId };
+    const filter = {};
     
     if (month) filter.month = month;
     if (supervisorId) filter.supervisorId = supervisorId;
