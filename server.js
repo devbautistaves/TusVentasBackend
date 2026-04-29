@@ -610,6 +610,11 @@ connectDB()
 // User Schema
 const userSchema = new mongoose.Schema(
   {
+companyId: {
+    type: String,
+    enum: ["prosegur", "tupaginaya"],
+    default: "prosegur",
+  },
     name: {
       type: String,
       required: [true, "Name is required"],
@@ -700,6 +705,11 @@ const userSchema = new mongoose.Schema(
 // Sale Schema
 const saleSchema = new mongoose.Schema(
   {
+companyId: {
+    type: String,
+    enum: ["prosegur", "tupaginaya"],
+    default: "prosegur",
+  },
     sellerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -945,6 +955,11 @@ planPrice: {
 // Plan Schema
 const planSchema = new mongoose.Schema(
   {
+companyId: {
+    type: String,
+    enum: ["prosegur", "tupaginaya"],
+    default: "prosegur",
+  },
     name: {
       type: String,
       required: [true, "Plan name is required"],
@@ -986,6 +1001,11 @@ const planSchema = new mongoose.Schema(
 // Lead Schema - Sistema de embudo de ventas
 const leadSchema = new mongoose.Schema(
   {
+companyId: {
+    type: String,
+    enum: ["prosegur", "tupaginaya"],
+    default: "prosegur",
+  },
     // Datos del contacto/lead
     name: {
       type: String,
@@ -1129,6 +1149,11 @@ const Lead = mongoose.model("Lead", leadSchema)
 // Notification Schema
 const notificationSchema = new mongoose.Schema(
   {
+companyId: {
+    type: String,
+    enum: ["prosegur", "tupaginaya"],
+    default: "prosegur",
+  },
     title: {
       type: String,
       required: [true, "Title is required"],
@@ -1212,6 +1237,11 @@ attachments: [
 // ChatRoom Schema
 const chatRoomSchema = new mongoose.Schema(
   {
+companyId: {
+    type: String,
+    enum: ["prosegur", "tupaginaya"],
+    default: "prosegur",
+  },
     name: {
       type: String,
       required: [true, "Chat room name is required"],
@@ -1351,6 +1381,330 @@ const supervisorAdCostSchema = new mongoose.Schema(
 // Index compuesto para asegurar un solo registro por supervisor/mes
 supervisorAdCostSchema.index({ supervisorId: 1, month: 1 }, { unique: true })
 
+// Client Schema (para TuPaginaYa)
+const clientSchema = new mongoose.Schema(
+  {
+    companyId: {
+      type: String,
+      enum: ["prosegur", "tupaginaya", "tusventas"],
+      default: "tupaginaya",
+    },
+    // Datos del cliente
+    name: {
+      type: String,
+      required: [true, "Client name is required"],
+      trim: true,
+    },
+    email: {
+      type: String,
+      required: [true, "Client email is required"],
+      trim: true,
+      lowercase: true,
+    },
+    phone: {
+      type: String,
+      required: [true, "Phone is required"],
+      trim: true,
+    },
+    dni: {
+      type: String,
+      trim: true,
+    },
+    // Datos del negocio
+    businessName: {
+      type: String,
+      trim: true,
+    },
+    businessType: {
+      type: String,
+      trim: true,
+    },
+    // Datos de la web
+    domain: {
+      type: String,
+      trim: true,
+    },
+    demoUrl: {
+      type: String,
+      trim: true,
+    },
+    liveUrl: {
+      type: String,
+      trim: true,
+    },
+    webType: {
+      type: String,
+      enum: ["landing", "ecommerce", "catalogo", "institucional", "blog", "otro"],
+      default: "landing",
+    },
+    hostingPlan: {
+      type: String,
+      trim: true,
+    },
+    // Estado del cliente
+    status: {
+      type: String,
+      enum: ["demo_pendiente", "demo_enviada", "web_activada", "web_pausada", "cliente_baja"],
+      default: "demo_pendiente",
+    },
+    // Fecha de activacion/inicio de cobranza
+    activationDate: {
+      type: Date,
+    },
+    // Fecha de baja si aplica
+    cancellationDate: {
+      type: Date,
+    },
+    cancellationReason: {
+      type: String,
+      trim: true,
+    },
+    // Precios
+    monthlyPrice: {
+      type: Number,
+      default: 0,
+    },
+    setupPrice: {
+      type: Number,
+      default: 0,
+    },
+    // Dia de corte para cobranza (1-31)
+    billingDay: {
+      type: Number,
+      default: 1,
+      min: 1,
+      max: 31,
+    },
+    // Vendedor asignado
+    sellerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    // Venta asociada (si existe)
+    saleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Sale",
+    },
+    // Notas
+    notes: {
+      type: String,
+      trim: true,
+    },
+  },
+  {
+    timestamps: true,
+  }
+)
+
+// Payment Schema (Pagos de clientes)
+const paymentSchema = new mongoose.Schema(
+  {
+    companyId: {
+      type: String,
+      enum: ["prosegur", "tupaginaya", "tusventas"],
+      default: "tupaginaya",
+    },
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      required: true,
+    },
+    amount: {
+      type: Number,
+      required: true,
+    },
+    period: {
+      type: String, // "2024-01" formato YYYY-MM
+      required: true,
+    },
+    paymentDate: {
+      type: Date,
+      default: Date.now,
+    },
+    paymentMethod: {
+      type: String,
+      enum: ["efectivo", "transferencia", "mercadopago", "tarjeta", "otro"],
+      default: "transferencia",
+    },
+    status: {
+      type: String,
+      enum: ["pendiente", "pagado", "vencido", "anulado"],
+      default: "pendiente",
+    },
+    notes: {
+      type: String,
+      trim: true,
+    },
+    recordedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+  },
+  {
+    timestamps: true,
+  }
+)
+
+// Transaction Schema (Ingresos/Egresos)
+const transactionSchema = new mongoose.Schema(
+  {
+    companyId: {
+      type: String,
+      enum: ["prosegur", "tupaginaya", "tusventas"],
+      default: "tupaginaya",
+    },
+    type: {
+      type: String,
+      enum: ["ingreso", "egreso"],
+      required: true,
+    },
+    category: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    amount: {
+      type: Number,
+      required: true,
+    },
+    description: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    date: {
+      type: Date,
+      default: Date.now,
+    },
+    // Referencia opcional a cliente
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+    },
+    // Referencia opcional a pago
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+    },
+    recordedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    notes: {
+      type: String,
+      trim: true,
+    },
+  },
+  {
+    timestamps: true,
+  }
+)
+
+// Liquidation Schema (Pago a vendedores)
+const liquidationSchema = new mongoose.Schema(
+  {
+    companyId: {
+      type: String,
+      enum: ["prosegur", "tupaginaya", "tusventas"],
+      default: "tupaginaya",
+    },
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    period: {
+      type: String, // "2024-01" formato YYYY-MM
+      required: true,
+    },
+    totalAmount: {
+      type: Number,
+      required: true,
+    },
+    // Detalles de las ventas/comisiones incluidas
+    details: [
+      {
+        saleId: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "Sale",
+        },
+        amount: Number,
+        description: String,
+      },
+    ],
+    status: {
+      type: String,
+      enum: ["pendiente", "pagado", "anulado"],
+      default: "pendiente",
+    },
+    paidAt: {
+      type: Date,
+    },
+    paidBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    paymentMethod: {
+      type: String,
+      enum: ["efectivo", "transferencia", "mercadopago", "otro"],
+    },
+    notes: {
+      type: String,
+      trim: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+  },
+  {
+    timestamps: true,
+  }
+)
+
+// Index para liquidaciones
+liquidationSchema.index({ userId: 1, period: 1, companyId: 1 }, { unique: true })
+
+// PaymentReminder Schema (Recordatorios enviados)
+const paymentReminderSchema = new mongoose.Schema(
+  {
+    companyId: {
+      type: String,
+      default: "tupaginaya",
+    },
+    clientId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Client",
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: ["5_dias", "15_dias", "30_dias", "manual"],
+      required: true,
+    },
+    sentAt: {
+      type: Date,
+      default: Date.now,
+    },
+    sentBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    emailSent: {
+      type: Boolean,
+      default: false,
+    },
+    emailError: {
+      type: String,
+    },
+  },
+  {
+    timestamps: true,
+  }
+)
+
 // Models
 const User = mongoose.model("User", userSchema)
 const Sale = mongoose.model("Sale", saleSchema)
@@ -1359,6 +1713,11 @@ const Notification = mongoose.model("Notification", notificationSchema)
 const ChatRoom = mongoose.model("ChatRoom", chatRoomSchema)
 const Message = mongoose.model("Message", messageSchema)
 const SupervisorAdCost = mongoose.model("SupervisorAdCost", supervisorAdCostSchema)
+const Client = mongoose.model("Client", clientSchema)
+const Payment = mongoose.model("Payment", paymentSchema)
+const Transaction = mongoose.model("Transaction", transactionSchema)
+const Liquidation = mongoose.model("Liquidation", liquidationSchema)
+const PaymentReminder = mongoose.model("PaymentReminder", paymentReminderSchema)
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage()
@@ -1885,10 +2244,12 @@ console.log('CUSTOMER:', req.body.customer);
 
     const { planDetail, customPrice, paymentInfo } = req.body
 
-    // Si el supervisor crea la venta, guardar su ID para poder seguir viendola
+// Si el supervisor crea la venta, guardar su ID para poder seguir viendola
     const supervisorId = currentUser.role === "supervisor" ? currentUser._id : undefined
+    const companyId = getCompanyId(req);
 
     const sale = new Sale({
+      companyId,
       sellerId: targetSeller._id,
       sellerName: targetSeller.name,
       supervisorId: supervisorId,
@@ -1972,23 +2333,24 @@ app.get("/api/sales", authenticateToken, async (req, res) => {
     console.log("Fetching sales for user:", req.user.userId, "role:", req.user.role)
 
     const { page = 1, limit = 100, status, startDate, endDate } = req.query
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
 
     // Convertir userId a ObjectId para comparacion correcta
     const userObjectId = new mongoose.Types.ObjectId(req.user.userId)
     
-    let query = {}
+    let query = { ...companyFilter }
     
     if (req.user.role === "supervisor") {
       // Supervisor ve: sus propias ventas + ventas donde es supervisorId
-      query = {
-        $or: [
-          { sellerId: userObjectId },
-          { supervisorId: userObjectId }
-        ]
-      }
+      query.$and = [
+        companyFilter,
+        { $or: [{ sellerId: userObjectId }, { supervisorId: userObjectId }] }
+      ]
+      delete query.$or
     } else {
       // Vendedor solo ve sus propias ventas
-      query = { sellerId: userObjectId }
+      query.sellerId = userObjectId
     }
 
     if (status) query.status = status
@@ -2031,10 +2393,12 @@ app.get("/api/sales", authenticateToken, async (req, res) => {
 app.get("/api/plans", authenticateToken, async (req, res) => {
   try {
     console.log("Fetching plans")
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
 
-    const plans = await Plan.find({ isActive: true }).select("name description price features").sort({ price: 1 })
+    const plans = await Plan.find({ ...companyFilter, isActive: true }).select("name description price features").sort({ price: 1 })
 
-    console.log(`Found ${plans.length} active plans`)
+    console.log(`Found ${plans.length} active plans for company ${companyId}`)
 
     res.json({
       success: true,
@@ -2119,8 +2483,10 @@ app.get("/api/dashboard/stats", authenticateToken, async (req, res) => {
 app.get("/api/support/sales", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
     const { page = 1, limit = 20, status, sellerId, startDate, endDate } = req.query
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
     
-    const query = {}
+    const query = { ...companyFilter }
     if (status) query.status = status
     if (sellerId) query.sellerId = sellerId
     if (startDate || endDate) {
@@ -2158,14 +2524,16 @@ app.get("/api/support/sales", authenticateToken, requireAdminOrSupport, async (r
 // Support - Estadisticas basicas (sin datos financieros)
 app.get("/api/support/stats", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
-    const totalSales = await Sale.countDocuments()
-    const pendingSales = await Sale.countDocuments({ status: "pending" })
-    const pendingAppointment = await Sale.countDocuments({ status: "pending_appointment" })
-    const appointedSales = await Sale.countDocuments({ status: "appointed" })
-    const completedSales = await Sale.countDocuments({ status: "completed" })
-    const cancelledSales = await Sale.countDocuments({ status: "cancelled" })
-    const totalSellers = await User.countDocuments({ role: "seller", isActive: true })
-    const totalSupervisors = await User.countDocuments({ role: "supervisor", isActive: true })
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
+    const totalSales = await Sale.countDocuments(companyFilter)
+    const pendingSales = await Sale.countDocuments({ ...companyFilter, status: "pending" })
+    const pendingAppointment = await Sale.countDocuments({ ...companyFilter, status: "pending_appointment" })
+    const appointedSales = await Sale.countDocuments({ ...companyFilter, status: "appointed" })
+    const completedSales = await Sale.countDocuments({ ...companyFilter, status: "completed" })
+    const cancelledSales = await Sale.countDocuments({ ...companyFilter, status: "cancelled" })
+    const totalSellers = await User.countDocuments({ ...companyFilter, role: "seller", isActive: true })
+    const totalSupervisors = await User.countDocuments({ ...companyFilter, role: "supervisor", isActive: true })
 
     res.json({
       success: true,
@@ -2270,7 +2638,10 @@ app.put("/api/admin/sales/:id/contract", authenticateToken, requireAdminOrSuppor
 // Support - Obtener vendedores (solo nombres, sin comisiones)
 app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
     const sellers = await User.find({ 
+      ...companyFilter,
       role: { $in: ["seller", "supervisor"] },
       isActive: true 
     }).select("_id name email role")
@@ -2288,8 +2659,11 @@ app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async 
   app.get("/api/admin/stats", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
     console.log("Fetching admin stats")
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
 
     const totalStats = await Sale.aggregate([
+      { $match: companyFilter },
       {
         $group: {
           _id: null,
@@ -2300,11 +2674,20 @@ app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async 
       },
     ])
 
-    const userCount = await User.countDocuments({ role: "seller" })
-    const planCount = await Plan.countDocuments({ isActive: true })
+    // Para usuarios y planes, usar filtro compatible con legacy
+    const userFilter = companyId === 'prosegur' 
+      ? { $or: [{ companyId: 'prosegur' }, { companyId: { $exists: false } }, { companyId: null }, { companyId: '' }], role: "seller" }
+      : { companyId, role: "seller" };
+    const planFilter = companyId === 'prosegur'
+      ? { $or: [{ companyId: 'prosegur' }, { companyId: { $exists: false } }, { companyId: null }, { companyId: '' }], isActive: true }
+      : { companyId, isActive: true };
+    
+    const userCount = await User.countDocuments(userFilter)
+    const planCount = await Plan.countDocuments(planFilter)
 
-    // Calcular ventas por estado
+// Calcular ventas por estado
     const salesByStatusAgg = await Sale.aggregate([
+      { $match: companyFilter },
       {
         $group: {
           _id: "$status",
@@ -2318,7 +2701,8 @@ app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async 
       salesByStatus[item._id] = item.count
     })
 
-    const topSellers = await Sale.aggregate([
+const topSellers = await Sale.aggregate([
+      { $match: companyFilter },
       {
         $group: {
           _id: "$sellerId",
@@ -2331,7 +2715,8 @@ app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async 
       { $limit: 10 },
     ])
 
-    const topPlans = await Sale.aggregate([
+const topPlans = await Sale.aggregate([
+      { $match: companyFilter },
       {
         $group: {
           _id: "$planId",
@@ -2374,10 +2759,12 @@ app.get("/api/support/sellers", authenticateToken, requireAdminOrSupport, async 
 app.get("/api/admin/sales", authenticateToken, requireAdminOrSupport, async (req, res) => {
   try {
     console.log("Fetching admin sales")
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
 
     const { page = 1, limit = 20, status, sellerId, startDate, endDate } = req.query
 
-    const query = {}
+    const query = { ...companyFilter }
 
     if (status) query.status = status
     if (sellerId) query.sellerId = sellerId
@@ -2856,9 +3243,13 @@ app.get("/api/sellers", authenticateToken, async (req, res) => {
       });
     }
 
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
+    
     const sellers = await User.find({ 
+      ...companyFilter,
       role: "seller", 
-      isActive: true 
+      isActive: true,
     }).select("-password");
 
     res.json({
@@ -2875,16 +3266,18 @@ app.get("/api/admin/plans", authenticateToken, requireAdminOrSupport, async (req
     console.log("Fetching admin plans")
 
     const { page = 1, limit = 20 } = req.query
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
 
-    const plans = await Plan.find({})
+    const plans = await Plan.find(companyFilter)
       .populate("createdBy", "name email")
       .sort({ createdAt: -1 })
       .limit(Number(limit))
       .skip((Number(page) - 1) * Number(limit))
 
-    const total = await Plan.countDocuments({})
+    const total = await Plan.countDocuments(companyFilter)
 
-    console.log(`Found ${plans.length} admin plans out of ${total} total`)
+    console.log(`Found ${plans.length} admin plans out of ${total} total for company ${companyId}`)
 
     res.json({
       success: true,
@@ -2906,6 +3299,7 @@ app.get("/api/admin/plans", authenticateToken, requireAdminOrSupport, async (req
 app.post("/api/admin/plans", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { name, description, price, features } = req.body
+    const companyId = getCompanyId(req);
 
     if (!name || !description || !price) {
       return res.status(400).json({
@@ -2920,6 +3314,7 @@ app.post("/api/admin/plans", authenticateToken, requireAdmin, async (req, res) =
       price: Number(price),
       features: features || [],
       createdBy: req.user.userId,
+      companyId,
     })
 
     await plan.save()
@@ -2986,8 +3381,10 @@ app.get("/api/admin/users", authenticateToken, requireAdminOrSupport, async (req
     console.log("Fetching admin users")
 
     const { page = 1, limit = 20, isActive } = req.query
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
 
-    const usersQuery = {}
+    const usersQuery = { ...companyFilter }
     if (isActive !== undefined) {
       usersQuery.isActive = isActive === "true"
     }
@@ -2999,7 +3396,7 @@ app.get("/api/admin/users", authenticateToken, requireAdminOrSupport, async (req
 
     const totalUsers = await User.countDocuments(usersQuery)
 
-    console.log(`Found ${users.length} users out of ${totalUsers} total`)
+    console.log(`Found ${users.length} users out of ${totalUsers} total for company ${companyId}`)
 
     res.json({
       success: true,
@@ -3021,6 +3418,7 @@ app.get("/api/admin/users", authenticateToken, requireAdminOrSupport, async (req
 app.post("/api/admin/users", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const { name, email, password, phone, location, role } = req.body
+    const companyId = getCompanyId(req);
 
     if (!name || !email || !password || !phone || !location) {
       return res.status(400).json({
@@ -3036,11 +3434,12 @@ app.post("/api/admin/users", authenticateToken, requireAdmin, async (req, res) =
       })
     }
 
-    const existingUser = await User.findOne({ email })
+    // Verificar si existe usuario con ese email en la misma empresa
+    const existingUser = await User.findOne({ email, companyId })
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        error: "User already exists with this email",
+        error: "User already exists with this email in this company",
       })
     }
 
@@ -3054,6 +3453,7 @@ app.post("/api/admin/users", authenticateToken, requireAdmin, async (req, res) =
       location,
       role: role || "seller",
       commissionRate: 0.3,
+      companyId,
     })
 
     await user.save()
@@ -3070,6 +3470,7 @@ app.post("/api/admin/users", authenticateToken, requireAdmin, async (req, res) =
         role: user.role,
         commissionRate: user.commissionRate,
         isActive: user.isActive,
+        companyId: user.companyId,
       },
     })
   } catch (error) {
@@ -3150,8 +3551,11 @@ app.get("/api/notifications", authenticateToken, async (req, res) => {
   try {
     const { page = 1, limit = 20, type, priority, unreadOnly } = req.query
     const userId = req.user.userId
+    const companyId = getCompanyId(req)
+    const companyFilter = getCompanyFilter(companyId)
 
     const query = {
+      ...companyFilter,
       $or: [
         { recipients: userId },
         { recipients: { $size: 0 } }, // Global notifications
@@ -3198,6 +3602,8 @@ app.post("/api/notifications", authenticateToken, requireAdmin, upload.array("at
   try {
 const { title, message, type, priority, recipients, meetingInfo } = req.body;
 const { recipientType } = req.body;
+const companyId = getCompanyId(req);
+
     // Parsear attachments si vienen en string (por si acaso)
     if (typeof req.body.attachments === 'string') {
       try {
@@ -3217,7 +3623,7 @@ let parsedRecipients = recipients ? (typeof recipients === "string" ? JSON.parse
 
 
 if (recipientType === "all") {
-  const allVendedores = await User.find({     isActive: true,
+  const allVendedores = await User.find({ companyId, isActive: true,
     role: { $in: ["seller", "admin"] },
   }).select("_id");
   parsedRecipients = allVendedores.map(u => u._id.toString());
@@ -3254,7 +3660,8 @@ let parsedMeetingInfo = meetingInfo ? (typeof meetingInfo === "string" ? JSON.pa
   })
 );
 
-    const notification = new Notification({
+const notification = new Notification({
+      companyId,
       title,
       message,
       type: type || "info",
@@ -3356,8 +3763,11 @@ app.put("/api/notifications/:id/read", authenticateToken, async (req, res) => {
 app.get("/api/notifications/unread-count", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId
+    const companyId = getCompanyId(req)
+    const companyFilter = getCompanyFilter(companyId)
 
     const query = {
+      ...companyFilter,
       $or: [
         { recipients: userId },
         { recipients: { $size: 0 } }, // Global notifications
@@ -3381,8 +3791,11 @@ app.get("/api/notifications/unread-count", authenticateToken, async (req, res) =
 app.get("/api/chat/rooms", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId
+    const companyId = getCompanyId(req)
+    const companyFilter = getCompanyFilter(companyId)
 
     const rooms = await ChatRoom.find({
+      ...companyFilter,
       participants: userId,
       isActive: true,
     })
@@ -3404,6 +3817,7 @@ app.post("/api/chat/rooms", authenticateToken, async (req, res) => {
   try {
     const { name, type, participants } = req.body
     const userId = req.user.userId
+    const companyId = getCompanyId(req)
 
     if (!name || !type) {
       return res.status(400).json({
@@ -3418,6 +3832,7 @@ app.post("/api/chat/rooms", authenticateToken, async (req, res) => {
     }
 
     const chatRoom = new ChatRoom({
+      companyId,
       name,
       type,
       participants: roomParticipants,
@@ -3574,6 +3989,8 @@ app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
   try {
     const currentUserId = req.user.userId
     const targetUserId = req.params.userId
+    const companyId = getCompanyId(req)
+    const companyFilter = getCompanyFilter(companyId)
 
     if (currentUserId === targetUserId) {
       return res.status(400).json({
@@ -3584,13 +4001,14 @@ app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
 
     // Check if private room already exists
     let room = await ChatRoom.findOne({
+      ...companyFilter,
       type: "private",
       participants: { $all: [currentUserId, targetUserId], $size: 2 },
     })
       .populate("participants", "name role")
       .populate("lastMessage")
 
-    if (!room) {
+if (!room) {
       // Create new private room
       const targetUser = await User.findById(targetUserId)
       if (!targetUser) {
@@ -3601,6 +4019,7 @@ app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
       }
 
       room = new ChatRoom({
+        companyId,
         name: `Private chat`,
         type: "private",
         participants: [currentUserId, targetUserId],
@@ -3625,19 +4044,23 @@ app.get("/api/chat/private/:userId", authenticateToken, async (req, res) => {
 app.get("/api/chat/group", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId
+    const companyId = getCompanyId(req)
+    const companyFilter = getCompanyFilter(companyId)
 
     // Find or create group chat room
     let groupRoom = await ChatRoom.findOne({
+      ...companyFilter,
       type: "group",
       name: "Equipo de Ventas",
     }).populate("participants", "name role")
 
-    if (!groupRoom) {
-      // Create group chat room with all users
-      const allUsers = await User.find({ isActive: true }).select("_id")
+if (!groupRoom) {
+      // Create group chat room with all users from this company
+      const allUsers = await User.find({ ...companyFilter, isActive: true }).select("_id")
       const participantIds = allUsers.map((user) => user._id)
 
       groupRoom = new ChatRoom({
+        companyId,
         name: "Equipo de Ventas",
         type: "group",
         participants: participantIds,
@@ -3668,6 +4091,8 @@ app.get("/api/chat/group", authenticateToken, async (req, res) => {
 app.get("/api/chat/private-admin", authenticateToken, async (req, res) => {
   try {
     const userId = req.user.userId
+    const companyId = getCompanyId(req)
+    const companyFilter = getCompanyFilter(companyId)
 
     if (req.user.role === "admin") {
       return res.status(400).json({
@@ -3676,8 +4101,8 @@ app.get("/api/chat/private-admin", authenticateToken, async (req, res) => {
       })
     }
 
-    // Find admin user
-    const admin = await User.findOne({ role: "admin" })
+    // Find admin user from same company
+    const admin = await User.findOne({ ...companyFilter, role: "admin" })
     if (!admin) {
       return res.status(404).json({
         success: false,
@@ -3687,12 +4112,14 @@ app.get("/api/chat/private-admin", authenticateToken, async (req, res) => {
 
     // Find or create private chat with admin
     let privateRoom = await ChatRoom.findOne({
+      ...companyFilter,
       type: "private",
       participants: { $all: [userId, admin._id], $size: 2 },
     }).populate("participants", "name role")
 
     if (!privateRoom) {
       privateRoom = new ChatRoom({
+        companyId,
         name: "Chat con Admin",
         type: "private",
         participants: [userId, admin._id],
@@ -3715,9 +4142,12 @@ app.get("/api/chat/private-admin", authenticateToken, async (req, res) => {
 app.get("/api/chat/private-chats", authenticateToken, requireAdmin, async (req, res) => {
   try {
     const adminId = req.user.userId
+    const companyId = getCompanyId(req)
+    const companyFilter = getCompanyFilter(companyId)
 
     // Get all private chats where admin is a participant
     const privateChats = await ChatRoom.find({
+      ...companyFilter,
       type: "private",
       participants: adminId,
     })
@@ -3866,7 +4296,9 @@ app.get("/api/admin/ad-costs", authenticateToken, async (req, res) => {
     }
 
     const { month, supervisorId } = req.query;
-    const filter = {};
+    const companyId = getCompanyId(req);
+    const companyFilter = getCompanyFilter(companyId);
+    const filter = { ...companyFilter };
     
     if (month) filter.month = month;
     if (supervisorId) filter.supervisorId = supervisorId;
@@ -4652,6 +5084,530 @@ app.get("/api/leads/stats/summary", authenticateToken, async (req, res) => {
   } catch (error) {
     handleError(res, error, "Failed to fetch lead stats");
   }
+});
+
+// ========================================
+// RUTAS DE TUPAGINAYA - Sistema Multi-Empresa
+// ========================================
+  
+// Middleware para obtener companyId del header
+// Default es "prosegur" (empresa original del Grupo JV)
+const getCompanyId = (req) => {
+  const companyId = req.headers['x-company-id'] || 'prosegur';
+  // Compatibilidad: si viene "tusventas" lo tratamos como "prosegur"
+  return companyId === 'tusventas' ? 'prosegur' : companyId;
+};
+
+// Helper para crear filtro de companyId que incluye datos legacy (sin companyId)
+// Los datos antiguos no tienen companyId, por eso los incluimos para "prosegur"
+const getCompanyFilter = (companyId) => {
+  if (companyId === 'prosegur') {
+    // Para Prosegur, incluir datos sin companyId (legacy) o con companyId = prosegur
+    return { $or: [{ companyId: 'prosegur' }, { companyId: { $exists: false } }, { companyId: null }, { companyId: '' }] };
+  }
+  // Para otras empresas, solo datos con su companyId específico
+  return { companyId };
+};
+
+// --- RUTAS DE CLIENTES ---
+
+// Obtener todos los clientes
+app.get("/api/clients", authenticateToken, async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    const { status, sellerId } = req.query;
+    
+    const filter = { companyId };
+    if (status) filter.status = status;
+    if (sellerId) filter.sellerId = sellerId;
+    
+    // Si es vendedor, solo ve sus clientes
+    if (req.user.role === "seller") {
+      filter.sellerId = req.user.userId;
+    }
+    
+    const clients = await Client.find(filter)
+      .populate("sellerId", "name email")
+      .sort({ createdAt: -1 });
+    
+    res.json({ success: true, clients });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch clients");
+  }
+});
+
+// Crear cliente
+app.post("/api/clients", authenticateToken, async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    
+    const client = new Client({
+      ...req.body,
+      companyId,
+      sellerId: req.body.sellerId || req.user.userId,
+    });
+    
+    await client.save();
+    
+    const populatedClient = await Client.findById(client._id)
+      .populate("sellerId", "name email");
+    
+    res.status(201).json({ success: true, client: populatedClient });
+  } catch (error) {
+    handleError(res, error, "Failed to create client");
+  }
+});
+
+// Actualizar cliente
+app.put("/api/clients/:id", authenticateToken, async (req, res) => {
+  try {
+    const client = await Client.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    ).populate("sellerId", "name email");
+    
+    if (!client) {
+      return res.status(404).json({ success: false, error: "Client not found" });
+    }
+    
+    res.json({ success: true, client });
+  } catch (error) {
+    handleError(res, error, "Failed to update client");
+  }
+});
+
+// Estadisticas de clientes
+app.get("/api/clients/stats", authenticateToken, async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    
+    const stats = await Client.aggregate([
+      { $match: { companyId } },
+      {
+        $group: {
+          _id: "$status",
+          count: { $sum: 1 },
+          totalMonthly: { $sum: "$monthlyPrice" },
+        },
+      },
+    ]);
+    
+    const statusCounts = {};
+    let totalRevenue = 0;
+    
+    stats.forEach((s) => {
+      statusCounts[s._id] = s.count;
+      if (s._id === "web_activada") {
+        totalRevenue = s.totalMonthly;
+      }
+    });
+    
+    res.json({
+      success: true,
+      stats: {
+        byStatus: statusCounts,
+        totalActiveRevenue: totalRevenue,
+        total: Object.values(statusCounts).reduce((a, b) => a + b, 0),
+      },
+    });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch client stats");
+  }
+});
+
+// --- RUTAS DE COBRANZAS/PAGOS ---
+
+// Obtener panel de cobranzas (clientes con pagos pendientes)
+app.get("/api/collections", authenticateToken, async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    
+    // Obtener clientes activos
+    const activeClients = await Client.find({
+      companyId,
+      status: "web_activada",
+    }).populate("sellerId", "name email");
+    
+    // Para cada cliente, calcular dias de mora
+    const today = new Date();
+    const collections = activeClients.map((client) => {
+      const activationDate = client.activationDate || client.createdAt;
+      const billingDay = client.billingDay || 1;
+      
+      // Calcular ultima fecha de corte
+      const currentMonth = today.getMonth();
+      const currentYear = today.getFullYear();
+      let lastBillingDate = new Date(currentYear, currentMonth, billingDay);
+      
+      if (lastBillingDate > today) {
+        lastBillingDate = new Date(currentYear, currentMonth - 1, billingDay);
+      }
+      
+      // Calcular dias de mora
+      const daysSinceBilling = Math.floor((today - lastBillingDate) / (1000 * 60 * 60 * 24));
+      
+      return {
+        client: client.toObject(),
+        daysOverdue: daysSinceBilling > 0 ? daysSinceBilling : 0,
+        lastBillingDate,
+        amountDue: client.monthlyPrice,
+      };
+    });
+    
+    // Ordenar por dias de mora descendente
+    collections.sort((a, b) => b.daysOverdue - a.daysOverdue);
+    
+    res.json({ success: true, collections });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch collections");
+  }
+});
+
+// Registrar pago de cliente
+app.post("/api/clients/:id/payments", authenticateToken, async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    const client = await Client.findById(req.params.id);
+    
+    if (!client) {
+      return res.status(404).json({ success: false, error: "Client not found" });
+    }
+    
+    const payment = new Payment({
+      companyId,
+      clientId: client._id,
+      amount: req.body.amount,
+      period: req.body.period,
+      paymentMethod: req.body.paymentMethod || "transferencia",
+      status: "pagado",
+      paymentDate: req.body.paymentDate || new Date(),
+      notes: req.body.notes,
+      recordedBy: req.user.userId,
+    });
+    
+    await payment.save();
+    
+    // Crear transaccion de ingreso
+    const transaction = new Transaction({
+      companyId,
+      type: "ingreso",
+      category: "Pago mensualidad",
+      amount: payment.amount,
+      description: `Pago de ${client.name} - ${payment.period}`,
+      clientId: client._id,
+      paymentId: payment._id,
+      recordedBy: req.user.userId,
+    });
+    
+    await transaction.save();
+    
+    res.status(201).json({ success: true, payment, transaction });
+  } catch (error) {
+    handleError(res, error, "Failed to record payment");
+  }
+});
+
+// Obtener historial de pagos de un cliente
+app.get("/api/clients/:id/payments", authenticateToken, async (req, res) => {
+  try {
+    const payments = await Payment.find({ clientId: req.params.id })
+      .populate("recordedBy", "name")
+      .sort({ paymentDate: -1 });
+    
+    res.json({ success: true, payments });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch payments");
+  }
+});
+
+// Enviar recordatorio de pago
+app.post("/api/collections/send-reminder/:clientId", authenticateToken, async (req, res) => {
+  try {
+    const client = await Client.findById(req.params.clientId);
+    
+    if (!client) {
+      return res.status(404).json({ success: false, error: "Client not found" });
+    }
+    
+    const { type } = req.body; // "5_dias", "15_dias", "30_dias", "manual"
+    
+    // Enviar email de recordatorio
+    let emailSent = false;
+    let emailError = null;
+    
+    if (transporter && client.email) {
+      try {
+        await transporter.sendMail({
+          from: `"TuPaginaYa" <${process.env.EMAIL_SMTP}>`,
+          to: client.email,
+          subject: `Recordatorio de pago - ${client.businessName || client.name}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background-color: #3b82f6; padding: 20px; text-align: center;">
+                <h1 style="color: white; margin: 0;">TuPaginaYa</h1>
+              </div>
+              <div style="padding: 30px; background-color: #f8f9fa;">
+                <h2>Hola ${client.name},</h2>
+                <p>Te recordamos que tienes un pago pendiente por tu servicio web.</p>
+                <div style="background: white; padding: 20px; border-radius: 8px; margin: 20px 0;">
+                  <p><strong>Monto:</strong> $${client.monthlyPrice}</p>
+                  <p><strong>Servicio:</strong> ${client.domain || 'Tu pagina web'}</p>
+                </div>
+                <p>Por favor, realiza el pago a la brevedad para evitar la suspension del servicio.</p>
+                <p>Si ya realizaste el pago, por favor ignora este mensaje.</p>
+              </div>
+              <div style="background-color: #1a1a2e; padding: 15px; text-align: center;">
+                <small style="color: #888;">TuPaginaYa - Grupo JV</small>
+              </div>
+            </div>
+          `
+        });
+        emailSent = true;
+      } catch (error) {
+        emailError = error.message;
+      }
+    }
+    
+    // Registrar recordatorio
+    const reminder = new PaymentReminder({
+      companyId: "tupaginaya",
+      clientId: client._id,
+      type,
+      sentBy: req.user.userId,
+      emailSent,
+      emailError,
+    });
+    
+    await reminder.save();
+    
+    res.json({ success: true, reminder, emailSent });
+  } catch (error) {
+    handleError(res, error, "Failed to send reminder");
+  }
+});
+
+// --- RUTAS DE TRANSACCIONES ---
+
+// Obtener transacciones
+app.get("/api/transactions", authenticateToken, async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    const { type, month, category } = req.query;
+    
+    const filter = { companyId };
+    if (type) filter.type = type;
+    if (category) filter.category = category;
+    
+    if (month) {
+      const [year, monthNum] = month.split("-");
+      const startDate = new Date(year, parseInt(monthNum) - 1, 1);
+      const endDate = new Date(year, parseInt(monthNum), 0, 23, 59, 59);
+      filter.date = { $gte: startDate, $lte: endDate };
+    }
+    
+    const transactions = await Transaction.find(filter)
+      .populate("clientId", "name businessName")
+      .populate("recordedBy", "name")
+      .sort({ date: -1 });
+    
+    res.json({ success: true, transactions });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch transactions");
+  }
+});
+
+// Crear transaccion
+app.post("/api/transactions", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin" && req.user.role !== "supervisor") {
+      return res.status(403).json({ success: false, error: "Access denied" });
+    }
+    
+    const companyId = getCompanyId(req);
+    
+    const transaction = new Transaction({
+      ...req.body,
+      companyId,
+      recordedBy: req.user.userId,
+    });
+    
+    await transaction.save();
+    
+    const populatedTransaction = await Transaction.findById(transaction._id)
+      .populate("clientId", "name businessName")
+      .populate("recordedBy", "name");
+    
+    res.status(201).json({ success: true, transaction: populatedTransaction });
+  } catch (error) {
+    handleError(res, error, "Failed to create transaction");
+  }
+});
+
+// Resumen financiero
+app.get("/api/transactions/summary", authenticateToken, async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    const { month } = req.query;
+    
+    const filter = { companyId };
+    
+    if (month) {
+      const [year, monthNum] = month.split("-");
+      const startDate = new Date(year, parseInt(monthNum) - 1, 1);
+      const endDate = new Date(year, parseInt(monthNum), 0, 23, 59, 59);
+      filter.date = { $gte: startDate, $lte: endDate };
+    }
+    
+    const summary = await Transaction.aggregate([
+      { $match: filter },
+      {
+        $group: {
+          _id: "$type",
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]);
+    
+    const result = {
+      ingresos: 0,
+      egresos: 0,
+      balance: 0,
+    };
+    
+    summary.forEach((s) => {
+      if (s._id === "ingreso") result.ingresos = s.total;
+      if (s._id === "egreso") result.egresos = s.total;
+    });
+    
+    result.balance = result.ingresos - result.egresos;
+    
+    res.json({ success: true, summary: result });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch summary");
+  }
+});
+
+// --- RUTAS DE LIQUIDACIONES ---
+
+// Obtener liquidaciones
+app.get("/api/liquidations", authenticateToken, async (req, res) => {
+  try {
+    const companyId = getCompanyId(req);
+    const { userId, period, status } = req.query;
+    
+    const filter = { companyId };
+    if (userId) filter.userId = userId;
+    if (period) filter.period = period;
+    if (status) filter.status = status;
+    
+    const liquidations = await Liquidation.find(filter)
+      .populate("userId", "name email")
+      .populate("paidBy", "name")
+      .populate("createdBy", "name")
+      .sort({ createdAt: -1 });
+    
+    res.json({ success: true, liquidations });
+  } catch (error) {
+    handleError(res, error, "Failed to fetch liquidations");
+  }
+});
+
+// Crear liquidacion
+app.post("/api/liquidations", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ success: false, error: "Access denied" });
+    }
+    
+    const companyId = getCompanyId(req);
+    
+    const liquidation = new Liquidation({
+      ...req.body,
+      companyId,
+      createdBy: req.user.userId,
+    });
+    
+    await liquidation.save();
+    
+    const populatedLiquidation = await Liquidation.findById(liquidation._id)
+      .populate("userId", "name email")
+      .populate("createdBy", "name");
+    
+    res.status(201).json({ success: true, liquidation: populatedLiquidation });
+  } catch (error) {
+    handleError(res, error, "Failed to create liquidation");
+  }
+});
+
+// Marcar liquidacion como pagada
+app.put("/api/liquidations/:id/pay", authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== "admin") {
+      return res.status(403).json({ success: false, error: "Access denied" });
+    }
+    
+    const liquidation = await Liquidation.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: "pagado",
+        paidAt: new Date(),
+        paidBy: req.user.userId,
+        paymentMethod: req.body.paymentMethod,
+        notes: req.body.notes,
+      },
+      { new: true }
+    )
+      .populate("userId", "name email")
+      .populate("paidBy", "name");
+    
+    if (!liquidation) {
+      return res.status(404).json({ success: false, error: "Liquidation not found" });
+    }
+    
+    // Crear transaccion de egreso
+    const companyId = getCompanyId(req);
+    const transaction = new Transaction({
+      companyId,
+      type: "egreso",
+      category: "Liquidacion vendedor",
+      amount: liquidation.totalAmount,
+      description: `Liquidacion ${liquidation.period} - ${liquidation.userId.name}`,
+      recordedBy: req.user.userId,
+    });
+    
+    await transaction.save();
+    
+    res.json({ success: true, liquidation });
+  } catch (error) {
+    handleError(res, error, "Failed to pay liquidation");
+  }
+});
+
+// --- RUTA DE EMPRESAS ---
+
+// Obtener empresas disponibles
+// NOTA: TusVentas es el nombre del SOFTWARE, no una empresa
+// Las empresas del Grupo JV son: Prosegur (internet) y TuPaginaYa (webs)
+app.get("/api/companies", authenticateToken, async (req, res) => {
+  res.json({
+    success: true,
+    companies: [
+      {
+        id: "prosegur",
+        name: "Prosegur",
+        displayName: "Prosegur - Internet",
+        isActive: true,
+      },
+      {
+        id: "tupaginaya",
+        name: "TuPaginaYa",
+        displayName: "TuPaginaYa - Webs",
+        isActive: true,
+      },
+    ],
+  });
 });
 
 // Start the server
